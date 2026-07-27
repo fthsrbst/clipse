@@ -6,8 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Merge rules, loop guard and chunked transfer for Clipse peer sync."
 
 [dependencies]
 clipse-core.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+rmp-serde.workspace = true

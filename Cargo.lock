@@ -790,6 +790,8 @@ name = "clipse-sync"
 version = "0.1.0"
 dependencies = [
  "clipse-core",
+ "rmp-serde",
+ "serde",
  "thiserror 2.0.19",
  "tracing",
 ]
