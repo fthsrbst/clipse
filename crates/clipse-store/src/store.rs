@@ -499,6 +499,29 @@ impl Store {
             }
         }
     }
+
+    /// Live clips, tombstones excluded — this is the number the UI shows, and
+    /// a deleted clip is not something the user still has.
+    pub fn clip_count(&self) -> Result<u64> {
+        let conn = self.conn.lock().expect(LOCK_POISONED);
+        let count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM clip WHERE deleted = 0", [], |row| {
+                row.get(0)
+            })?;
+        Ok(count.max(0) as u64)
+    }
+
+    /// Bytes currently held by the blob store, for the quota readout. Reads
+    /// the bookkeeping table rather than walking the directory: the numbers
+    /// have to agree with what `enforce_blob_quota` acts on.
+    pub fn blob_bytes(&self) -> Result<u64> {
+        let conn = self.conn.lock().expect(LOCK_POISONED);
+        let total: i64 =
+            conn.query_row("SELECT COALESCE(SUM(size), 0) FROM blob_meta", [], |row| {
+                row.get(0)
+            })?;
+        Ok(total.max(0) as u64)
+    }
 }
 
 fn load_clip(conn: &Connection, id: &str) -> Result<Option<Clip>> {

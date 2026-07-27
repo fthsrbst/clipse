@@ -9,8 +9,15 @@ authors.workspace = true
 description = "Clipse background daemon: owns the clipboard, the history and the sync sessions."
 
 [dependencies]
+clipse-clipboard.workspace = true
 clipse-core.workspace = true
 clipse-ipc.workspace = true
+clipse-store.workspace = true
+
+# Synthetic paste lives in the daemon, not the UI: "Enter pastes into the
+# window you were just in" needs the same platform code on every front end, and
+# there is no reason to have it twice.
+enigo = "0.6"
 
 anyhow.workspace = true
 async-trait.workspace = true
@@ -23,4 +30,15 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+clipse-ipc.workspace = true
 tempfile.workspace = true
+
+# Only for the end-to-end test, which drives the real clipboard from the test
+# process so the daemon sees a genuine external copy.
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+] }

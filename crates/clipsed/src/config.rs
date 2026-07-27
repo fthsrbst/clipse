@@ -13,13 +13,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("reading {path}: {source}")]
-    Read { path: String, source: std::io::Error },
+    Read {
+        path: String,
+        source: std::io::Error,
+    },
 
     #[error("writing {path}: {source}")]
-    Write { path: String, source: std::io::Error },
+    Write {
+        path: String,
+        source: std::io::Error,
+    },
 
     #[error("{path} is not valid TOML: {source}")]
-    Parse { path: String, source: toml::de::Error },
+    Parse {
+        path: String,
+        source: toml::de::Error,
+    },
 
     #[error("could not serialise config: {0}")]
     Serialise(#[from] toml::ser::Error),
@@ -46,11 +55,17 @@ impl Config {
                 source,
             }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let config = Self { device: DeviceId::generate(), settings: Settings::default() };
+                let config = Self {
+                    device: DeviceId::generate(),
+                    settings: Settings::default(),
+                };
                 config.save(paths)?;
                 Ok(config)
             }
-            Err(source) => Err(ConfigError::Read { path: path.display().to_string(), source }),
+            Err(source) => Err(ConfigError::Read {
+                path: path.display().to_string(),
+                source,
+            }),
         }
     }
 
@@ -63,7 +78,10 @@ impl Config {
 /// Write via a sibling temp file and rename. A half-written config would cost
 /// the user their device identity, and with it every pairing.
 fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
-    let err = |source: std::io::Error| ConfigError::Write { path: path.display().to_string(), source };
+    let err = |source: std::io::Error| ConfigError::Write {
+        path: path.display().to_string(),
+        source,
+    };
 
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(err)?;
@@ -87,7 +105,10 @@ mod tests {
         let first = Config::load_or_create(&paths).unwrap();
         let second = Config::load_or_create(&paths).unwrap();
 
-        assert_eq!(first.device, second.device, "device identity must be stable");
+        assert_eq!(
+            first.device, second.device,
+            "device identity must be stable"
+        );
         assert!(paths.config().exists());
     }
 

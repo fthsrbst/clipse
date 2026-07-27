@@ -4,18 +4,22 @@
 //! interfaces are clients over `clipse-ipc`; closing a window must never stop
 //! syncing, which is the whole reason this is a separate process.
 
+mod capture;
 mod config;
 mod daemon;
 mod ipc_server;
+mod paste;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context as _;
 use clap::Parser;
-use clipse_core::Paths;
+use clipse_clipboard::{WatchConfig, WatchMode, sensitive::AppBlocklist, watch};
+use clipse_core::{HlcClock, Paths};
 use clipse_ipc::transport::Listener;
-use tracing::info;
+use clipse_store::{Store, StoreOptions};
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -45,17 +49,51 @@ async fn main() -> anyhow::Result<()> {
         Some(dir) => Paths::with_root(dir),
         None => Paths::platform_default().context("no platform data directory")?,
     };
-    paths.create_all().with_context(|| format!("creating {}", paths.root().display()))?;
+    paths
+        .create_all()
+        .with_context(|| format!("creating {}", paths.root().display()))?;
 
     let config = config::Config::load_or_create(&paths)?;
     info!(device = %config.device.short(), root = %paths.root().display(), "starting clipsed");
 
+    // Bound before anything expensive: if another daemon already owns this
+    // data directory, stop now rather than opening its database too.
     let listener = Listener::bind(&paths.ipc_endpoint()).await?;
     info!(endpoint = listener.endpoint(), "ipc listening");
 
-    let daemon = Arc::new(daemon::Daemon::new(paths, config));
+    let store = Arc::new(
+        Store::open(
+            &paths,
+            StoreOptions::with_quota(config.settings.blob_quota_bytes),
+        )
+        .context("opening the history store")?,
+    );
+
+    let watch_config = WatchConfig {
+        app_blocklist: AppBlocklist::defaults().with_extra(config.settings.blocked_apps.clone()),
+        detect_secrets: config.settings.detect_secrets,
+        ..WatchConfig::default()
+    };
+    let (watcher, captures) = watch(watch_config).context("starting the clipboard watcher")?;
+    if let WatchMode::ManualPush { reason } = watcher.mode() {
+        // Not an error: this is GNOME Wayland, and the user needs to be told
+        // rather than left wondering why nothing is being captured.
+        warn!(%reason, "automatic clipboard capture is unavailable on this desktop");
+    }
+
+    let clock = Arc::new(HlcClock::new(config.device));
+    let daemon = Arc::new(daemon::Daemon::new(
+        paths,
+        config,
+        store,
+        Arc::new(watcher),
+        clock,
+    ));
+
     let server = ipc_server::IpcServer::new(Arc::clone(&daemon));
     daemon.set_event_sink(server.events());
+
+    let capturing = tokio::spawn(capture::run(Arc::clone(&daemon), captures));
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let serving = tokio::spawn(server.serve(listener, shutdown_rx));
@@ -64,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
     info!("shutting down");
     let _ = shutdown_tx.send(true);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), serving).await;
+    capturing.abort();
 
     daemon.persist()?;
     Ok(())

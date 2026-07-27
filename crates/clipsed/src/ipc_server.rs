@@ -184,12 +184,18 @@ mod tests {
         let task = tokio::spawn(serve_connection(server_side, Arc::clone(&handler), rx));
 
         for id in 1..=3u64 {
-            write_frame(&mut client, &Frame::request(id, Request::History(HistoryQuery::page(5))))
-                .await
-                .unwrap();
+            write_frame(
+                &mut client,
+                &Frame::request(id, Request::History(HistoryQuery::page(5))),
+            )
+            .await
+            .unwrap();
             let response = read_frame(&mut client).await.unwrap();
             assert_eq!(response.id, id);
-            assert!(matches!(response.body, FrameBody::Response(Response::Clips(_))));
+            assert!(matches!(
+                response.body,
+                FrameBody::Response(Response::Clips(_))
+            ));
         }
 
         assert_eq!(handler.seen.load(Ordering::SeqCst), 3);
@@ -201,19 +207,30 @@ mod tests {
     async fn a_connection_that_never_subscribes_is_never_pushed_to() {
         let (server_side, mut client) = duplex();
         let (tx, rx) = broadcast::channel(8);
-        let task = tokio::spawn(serve_connection(server_side, Arc::new(FakeHandler::default()), rx));
+        let task = tokio::spawn(serve_connection(
+            server_side,
+            Arc::new(FakeHandler::default()),
+            rx,
+        ));
 
         tx.send(Event::ClipRemoved(ClipId::generate())).unwrap();
 
         // The only frame this connection may ever see is its own response.
-        write_frame(&mut client, &Frame::request(1, Request::Status)).await.unwrap();
+        write_frame(&mut client, &Frame::request(1, Request::Status))
+            .await
+            .unwrap();
         let frame = read_frame(&mut client).await.unwrap();
         assert!(matches!(frame.body, FrameBody::Response(_)));
 
-        let nothing_more =
-            tokio::time::timeout(std::time::Duration::from_millis(150), read_frame(&mut client))
-                .await;
-        assert!(nothing_more.is_err(), "an unsubscribed client was pushed an event");
+        let nothing_more = tokio::time::timeout(
+            std::time::Duration::from_millis(150),
+            read_frame(&mut client),
+        )
+        .await;
+        assert!(
+            nothing_more.is_err(),
+            "an unsubscribed client was pushed an event"
+        );
 
         drop(client);
         let _ = task.await;
@@ -223,14 +240,20 @@ mod tests {
     async fn subscribing_loses_no_event_since_the_connection_opened() {
         let (server_side, mut client) = duplex();
         let (tx, rx) = broadcast::channel(8);
-        let task = tokio::spawn(serve_connection(server_side, Arc::new(FakeHandler::default()), rx));
+        let task = tokio::spawn(serve_connection(
+            server_side,
+            Arc::new(FakeHandler::default()),
+            rx,
+        ));
 
         // A clip copied between accept and Subscribe: the UI is already
         // connected, so dropping this would leave its list silently stale.
         let during_handshake = ClipId::generate();
         tx.send(Event::ClipRemoved(during_handshake)).unwrap();
 
-        write_frame(&mut client, &Frame::request(1, Request::Subscribe)).await.unwrap();
+        write_frame(&mut client, &Frame::request(1, Request::Subscribe))
+            .await
+            .unwrap();
         let ack = read_frame(&mut client).await.unwrap();
         assert!(matches!(ack.body, FrameBody::Response(Response::Ok)));
 
@@ -244,7 +267,11 @@ mod tests {
                 other => panic!("expected an event, got {other:?}"),
             }
         }
-        assert_eq!(delivered, vec![during_handshake, after], "events arrived out of order");
+        assert_eq!(
+            delivered,
+            vec![during_handshake, after],
+            "events arrived out of order"
+        );
 
         drop(client);
         let _ = task.await;
@@ -254,7 +281,11 @@ mod tests {
     async fn a_client_that_disappears_does_not_hang_the_server() {
         let (server_side, client) = duplex();
         let (_tx, rx) = broadcast::channel(8);
-        let task = tokio::spawn(serve_connection(server_side, Arc::new(FakeHandler::default()), rx));
+        let task = tokio::spawn(serve_connection(
+            server_side,
+            Arc::new(FakeHandler::default()),
+            rx,
+        ));
 
         drop(client);
 
