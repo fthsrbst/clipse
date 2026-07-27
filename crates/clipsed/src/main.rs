@@ -101,6 +101,9 @@ async fn main() -> anyhow::Result<()> {
     let clock = Arc::new(HlcClock::new(config.device));
     let sync_enabled = config.settings.sync_enabled;
     let device_label = config.settings.device_label.clone();
+    let label_for_record = device_label.clone();
+    let config_device = config.device;
+    let device_fingerprint = device_key.fingerprint().to_string();
     let loop_guard = Arc::new(std::sync::Mutex::new(clipse_sync::LoopGuard::default()));
 
     let daemon = Arc::new(daemon::Daemon::new(
@@ -141,7 +144,23 @@ async fn main() -> anyhow::Result<()> {
                     label: device_label,
                     platform: std::env::consts::OS.to_string(),
                 });
-                let manager = peers::PeerManager::new(transport, ctx, trust);
+                let record = clipse_net::ServiceRecord::new(
+                    config_device,
+                    device_fingerprint,
+                    label_for_record,
+                    std::env::consts::OS,
+                );
+                let quic_port = transport.local_addr().port();
+                let mut manager = peers::PeerManager::new(transport, ctx, trust);
+                match clipse_net::Discovery::start(&record, quic_port) {
+                    Ok(discovery) => {
+                        info!("announcing on the local network");
+                        manager = manager.with_discovery(discovery);
+                    }
+                    // Not fatal: peers recorded at pairing time are still
+                    // reachable, they just will not be re-found automatically.
+                    Err(e) => warn!(error = %e, "mDNS unavailable; discovery is off"),
+                }
                 daemon.set_peers(Arc::clone(&manager));
                 Some((
                     tokio::spawn(Arc::clone(&manager).accept_loop(shutdown_rx.clone())),

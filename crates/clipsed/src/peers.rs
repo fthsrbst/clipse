@@ -20,7 +20,7 @@ use std::time::Duration;
 use clipse_core::DeviceId;
 use clipse_crypto::{CandidateAddress, Trust};
 use clipse_net::candidate::{Candidate, CandidateList};
-use clipse_net::{Backoff, Inbound, QuicTransport};
+use clipse_net::{Backoff, Discovery, DiscoveryEvent, Inbound, QuicTransport};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
@@ -54,6 +54,10 @@ pub struct PeerManager {
     ctx: Arc<SyncContext>,
     trust: Arc<RwLock<Trust>>,
     peers: Mutex<HashMap<DeviceId, PeerState>>,
+    /// Absent when mDNS could not start — a container without multicast, a
+    /// locked-down network. Sync still works through the addresses recorded at
+    /// pairing time, so this is a degradation and not a failure.
+    discovery: Option<Arc<Mutex<Discovery>>>,
 }
 
 impl PeerManager {
@@ -67,9 +71,79 @@ impl PeerManager {
             ctx,
             trust,
             peers: Mutex::new(HashMap::new()),
+            discovery: None,
         });
         manager.reload_from_trust();
         manager
+    }
+
+    /// Start announcing this device and browsing for the others.
+    pub fn with_discovery(mut self: Arc<Self>, discovery: Discovery) -> Arc<Self> {
+        if let Some(manager) = Arc::get_mut(&mut self) {
+            manager.discovery = Some(Arc::new(Mutex::new(discovery)));
+        }
+        self
+    }
+
+    /// One browse, folding whatever is found into the peers we already trust.
+    ///
+    /// Discovery never *adds* a peer: an address is only useful for a device
+    /// the user already paired with, and treating an advertisement as anything
+    /// more would let anyone on the LAN join by shouting.
+    async fn refresh_from_discovery(&self) {
+        let Some(discovery) = self.discovery.clone() else {
+            return;
+        };
+
+        // `sweep` blocks on a channel, so it does not belong on the runtime.
+        let found = tokio::task::spawn_blocking(move || {
+            discovery
+                .lock()
+                .expect(POISONED)
+                .sweep(Duration::from_millis(1_500))
+        })
+        .await;
+
+        let events = match found {
+            Ok(Ok(events)) => events,
+            Ok(Err(e)) => {
+                debug!(error = %e, "discovery sweep failed");
+                return;
+            }
+            Err(e) => {
+                debug!(error = %e, "discovery task failed");
+                return;
+            }
+        };
+
+        let now = now_ms();
+        let mut peers = self.peers.lock().expect(POISONED);
+        for event in events {
+            match event {
+                DiscoveryEvent::Found(peer) => {
+                    if let Some(state) = peers.get_mut(&peer.device) {
+                        state.candidates.refresh_lan(peer.addresses, now);
+                        // Seeing a device on the network is a reason to try it
+                        // again, whatever happened last time.
+                        state.backoff.reset();
+                    } else {
+                        debug!(device = %peer.device.short(), "ignoring an unpaired device");
+                    }
+                }
+                DiscoveryEvent::Lost(device) => {
+                    if let Some(state) = peers.get_mut(&device) {
+                        // Keep the tailnet route; only the LAN sighting is gone.
+                        state.candidates.refresh_lan([], now);
+                    }
+                }
+                DiscoveryEvent::Incompatible { instance, reason } => {
+                    warn!(
+                        instance,
+                        reason, "a Clipse device on this network cannot be talked to"
+                    );
+                }
+            }
+        }
     }
 
     /// Rebuild the peer table from the paired set — on startup, and whenever
@@ -153,6 +227,7 @@ impl PeerManager {
                     if *shutdown.borrow() { return; }
                 }
                 _ = tokio::time::sleep(DIAL_TICK) => {
+                    self.refresh_from_discovery().await;
                     self.sync_all().await;
                 }
             }

@@ -40,10 +40,14 @@ Windows.
   peer manager. The daemon listens on QUIC and syncs; text, rich text and
   blob payloads all cross.
 
-**Remaining:** the mDNS browse/announce loop (the record codec is done, the
-loop is not), so peers are currently reached only through addresses recorded
-at pairing time; and the pairing flow over IPC, so pairing can be driven from
-the UI rather than only from tests.
+mDNS announce and browse are wired in: the daemon advertises itself and folds
+what it finds into the candidate list of devices it already trusts. Discovery
+never adds a peer — an advertisement is an address for someone you already
+paired with, not an invitation.
+
+**Remaining:** the pairing flow over IPC, so pairing can be driven from the UI
+rather than only from tests. Everything underneath it works: the ceremony runs
+over the network on its own ALPN and is covered end to end.
 
 ## F3 — macOS notch
 
@@ -75,6 +79,6 @@ notarisation steps cannot be verified without them.
 | `clipse-store` | 24 | Quota, FTS, migration, concurrency |
 | `clipse-ipc` | 11 | Framing, plus the real platform transport |
 | `clipse-sync` | 34 | Merge convergence, loop guard, chunk assembly |
-| `clipse-net` | 49 | Dial order, tailnet parsing, framing, real QUIC loopback |
+| `clipse-net` | 52 | Dial order, tailnet parsing, framing, real QUIC loopback |
 | `clipse-crypto` | 21 | MITM simulation, SAS bias, tamper detection |
 | `clipsed` | 42 | 11 sync two full daemon stacks; 6 drive the real binary |
