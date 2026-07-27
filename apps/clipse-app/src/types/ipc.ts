@@ -127,3 +127,15 @@ export function isCommandError(value: unknown): value is CommandError {
   const kind = (value as { kind: unknown }).kind;
   return kind === "not_connected" || kind === "daemon" || kind === "transport";
 }
+
+/** The string a pairing screen shows, and when it stops being valid. */
+export interface PairingOffer {
+  uri: string;
+  expires_at_ms: number;
+}
+
+/** Both devices compute these. The user compares them. */
+export interface PairingCode {
+  digits: string;
+  peer_label: string;
+}

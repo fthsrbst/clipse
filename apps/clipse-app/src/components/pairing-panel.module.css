@@ -1,0 +1,159 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.start,
+.compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.lead {
+  margin: 0;
+  color: var(--color-ink-secondary);
+  font-size: var(--type-sm);
+  line-height: var(--leading-normal);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.divider {
+  color: var(--color-ink-muted);
+  font-size: var(--type-xs);
+  text-transform: lowercase;
+}
+
+.input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.offer {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-canvas);
+  color: var(--color-ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  /* The offer is long and must stay selectable in full — never truncated,
+     or someone will copy half of it and wonder why pairing fails. */
+  word-break: break-all;
+  user-select: all;
+}
+
+/* The one thing on this screen the user has to actually read and compare, so
+   it is the only thing at this size. */
+.digits {
+  align-self: center;
+  padding: 12px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+  font-family: var(--font-mono);
+  font-size: var(--type-3xl);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-wide);
+}
+
+.warning {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--type-xs);
+  line-height: var(--leading-normal);
+}
+
+.primary,
+.secondary,
+.danger,
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: var(--type-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.primary {
+  background: var(--color-accent);
+  color: var(--night-950, #07080d);
+  font-weight: 600;
+}
+
+.secondary {
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  border-color: var(--color-border);
+}
+
+.danger {
+  background: transparent;
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--color-ink-muted);
+  align-self: flex-start;
+}
+
+.primary:hover,
+.secondary:hover {
+  background: var(--color-surface-hover);
+}
+
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary svg,
+.secondary svg,
+.danger svg,
+.ghost svg {
+  width: 16px;
+  height: 16px;
+}
+
+.done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-success);
+  font-size: var(--type-sm);
+}
+
+.error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: var(--type-sm);
+}

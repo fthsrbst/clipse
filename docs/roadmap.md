@@ -51,18 +51,16 @@ anything until both are told the digits matched. Three tests drive two real
 daemon processes through it — including refusing the code, which must pair
 nothing.
 
-**F2 is complete.** What is left in the app is a pairing *screen*. Everything
-under it is done and reachable from the frontend: the Tauri commands
-`begin_pairing`, `pair_with_uri`, `confirm_pairing`, `cancel_pairing` and
-`forget_device` exist, and the `pairing-code` / `pairing-ended` events arrive
-in the webview. What is missing is React: a view that shows the offer, takes a
-pasted one from the other device, puts the two six-digit codes side by side and
-*asks* whether they match.
+**F2 is complete**, including the pairing screen in Settings. It shows the
+offer, takes a pasted one from the other device, puts the six digits on screen
+and asks whether they match — and the button that commits the pairing is
+disabled anywhere the code is not visible, which the reducer behind it is
+tested for exhaustively.
 
-Rendering the offer as an actual QR image needs a QR encoder, and this app
-takes no dependency it does not need — writing one is the larger half of that
-screen. Pairing works without it: the offer is a `clipse://pair/...` string
-that can be copied between devices.
+The offer is a copyable `clipse://pair/...` string rather than a QR image.
+Drawing a real QR code means writing an encoder, and this app takes no
+dependency it does not need; copying the string pairs devices identically. The
+QR rendering is the one piece of the original F2 description still outstanding.
 
 ## F3 — macOS notch
 

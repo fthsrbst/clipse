@@ -17,6 +17,8 @@ import {
   type DaemonStatus,
   type HistoryQuery,
   type PeerInfo,
+  type PairingCode,
+  type PairingOffer,
   type Settings,
   isCommandError,
 } from "../types/ipc";
@@ -69,6 +71,15 @@ export const api = {
   status: () => call<DaemonStatus>("status"),
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
   devices: () => call<PeerInfo[]>("devices"),
+
+  beginPairing: () => call<PairingOffer>("begin_pairing"),
+  pairWithUri: (uri: string) => call<PairingCode>("pair_with_uri", { uri }),
+  /** `accept` is the user's answer to "do these six digits match?". Never
+   * pass true without having asked: that comparison is the only defence this
+   * protocol has against a man in the middle. */
+  confirmPairing: (accept: boolean) => call<void>("confirm_pairing", { accept }),
+  cancelPairing: () => call<void>("cancel_pairing"),
+  forgetDevice: (device: string) => call<void>("forget_device", { device }),
   getSettings: () => call<Settings>("get_settings"),
   updateSettings: (settings: Settings) => call<Settings>("update_settings", { settings }),
   hidePopup: () => call<void>("hide_popup"),
@@ -109,6 +120,17 @@ export function onDeviceChanged(handler: (peer: PeerInfo) => void) {
 
 export function onSuppressed(handler: (reason: string) => void) {
   return listen<string>("suppressed", (e) => handler(e.payload));
+}
+
+/** Fires on the device that showed the offer, once someone answers it. */
+export function onPairingCode(handler: (code: PairingCode) => void) {
+  return listen<[string, string]>("pairing-code", (e) =>
+    handler({ digits: e.payload[0], peer_label: e.payload[1] }),
+  );
+}
+
+export function onPairingEnded(handler: (reason: string) => void) {
+  return listen<string>("pairing-ended", (e) => handler(e.payload));
 }
 
 export function onConnectionChanged(handler: (connected: boolean) => void) {

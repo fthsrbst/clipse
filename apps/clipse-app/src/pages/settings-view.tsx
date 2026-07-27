@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { HotkeyInput } from "../components/hotkey-input";
 import { ToggleSwitch } from "../components/toggle-switch";
 import { TagListInput } from "../components/tag-list-input";
+import { PairingPanel } from "../components/pairing-panel";
 import { CaptureModeBanner } from "../components/capture-mode-banner";
 import { DaemonOfflineState } from "../components/daemon-offline-state";
 import { EmptyState } from "../components/empty-state";
@@ -133,6 +134,16 @@ export function SettingsView({ onBack, status }: SettingsViewProps) {
             <section className={styles.section}>
               <Row label="Blocked apps" description="Clipboard activity from these apps is never captured." stacked>
                 <TagListInput values={draft.blocked_apps} onChange={(blocked_apps) => patch({ blocked_apps })} />
+              </Row>
+            </section>
+
+            <section className={styles.section}>
+              <Row
+                label="Paired devices"
+                description="Your clipboard is only ever shared with devices you pair here."
+                stacked
+              >
+                <PairingPanel />
               </Row>
             </section>
 
