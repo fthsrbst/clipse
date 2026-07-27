@@ -1,0 +1,43 @@
+/* The popup window itself is transparent and undecorated (see
+ * src-tauri/tauri.conf.json) so this card supplies its own background,
+ * border and shadow — otherwise nothing would be visible at all. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popup);
+  overflow: hidden;
+}
+
+.searchRow {
+  padding: 12px 12px 8px;
+  flex-shrink: 0;
+}
+
+.filterRow {
+  padding: 0 12px 8px;
+  flex-shrink: 0;
+}
+
+.listWrap {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-ink-muted);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}

@@ -1,0 +1,30 @@
+.track {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 24px;
+  padding: 3px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.track.on {
+  background: var(--corona-gradient);
+}
+
+.thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--day-50);
+  box-shadow: var(--shadow-raised);
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.track.on .thumb {
+  transform: translateX(16px);
+}

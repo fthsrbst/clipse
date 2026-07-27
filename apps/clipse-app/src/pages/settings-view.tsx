@@ -1,0 +1,173 @@
+import { useEffect, useState } from "react";
+import { HotkeyInput } from "../components/hotkey-input";
+import { ToggleSwitch } from "../components/toggle-switch";
+import { TagListInput } from "../components/tag-list-input";
+import { CaptureModeBanner } from "../components/capture-mode-banner";
+import { DaemonOfflineState } from "../components/daemon-offline-state";
+import { EmptyState } from "../components/empty-state";
+import { useSettings } from "../hooks/use-settings";
+import type { DaemonStatus, Settings } from "../types/ipc";
+import styles from "./settings-view.module.css";
+
+const GB = 1024 * 1024 * 1024;
+
+export interface SettingsViewProps {
+  onBack: () => void;
+  status: DaemonStatus | null;
+}
+
+export function SettingsView({ onBack, status }: SettingsViewProps) {
+  const { settings, loading, saving, offline, errorMessage, save } = useSettings();
+  const [draft, setDraft] = useState<Settings | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  useEffect(() => {
+    if (settings) setDraft(settings);
+  }, [settings]);
+
+  const dirty = draft !== null && settings !== null && JSON.stringify(draft) !== JSON.stringify(settings);
+
+  function patch(partial: Partial<Settings>) {
+    setDraft((prev) => (prev ? { ...prev, ...partial } : prev));
+  }
+
+  async function handleSave() {
+    if (!draft) return;
+    try {
+      await save(draft);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1600);
+    } catch {
+      // Surfaced via errorMessage / offline below.
+    }
+  }
+
+  return (
+    <div className={styles.window}>
+      <header className={styles.header}>
+        <button type="button" className={styles.back} onClick={onBack}>
+          ← Back
+        </button>
+        <span className={styles.title}>Settings</span>
+        <span aria-hidden="true" />
+      </header>
+
+      <div className={styles.body}>
+        {status && status.capture_mode !== "Automatic" && (
+          <div className={styles.section}>
+            <CaptureModeBanner captureMode={status.capture_mode} />
+          </div>
+        )}
+
+        {offline ? (
+          <DaemonOfflineState />
+        ) : loading ? (
+          <EmptyState title="Loading settings…" animated />
+        ) : !draft ? (
+          <EmptyState
+            title="Couldn't load settings"
+            description={errorMessage ?? "Something went wrong talking to Clipse."}
+          />
+        ) : (
+          <>
+            <section className={styles.section}>
+              <Row label="Hotkey" description="Opens the quick-paste popup from anywhere.">
+                <HotkeyInput value={draft.hotkey} onChange={(hotkey) => patch({ hotkey })} />
+              </Row>
+              <Row
+                label="Apply incoming clips to clipboard"
+                description="When off, clips synced from other devices land in history but don't take over your clipboard."
+              >
+                <ToggleSwitch
+                  checked={draft.apply_incoming_to_clipboard}
+                  onChange={(v) => patch({ apply_incoming_to_clipboard: v })}
+                  label="Apply incoming clips to clipboard"
+                />
+              </Row>
+              <Row label="Detect secrets" description="Skip capturing content that looks like a password or API key.">
+                <ToggleSwitch
+                  checked={draft.detect_secrets}
+                  onChange={(v) => patch({ detect_secrets: v })}
+                  label="Detect secrets"
+                />
+              </Row>
+              <Row label="Start at login" description="Launch Clipse automatically when you sign in.">
+                <ToggleSwitch
+                  checked={draft.start_at_login}
+                  onChange={(v) => patch({ start_at_login: v })}
+                  label="Start at login"
+                />
+              </Row>
+            </section>
+
+            <section className={styles.section}>
+              <Row label="Device label" description="How this device appears to your other paired devices.">
+                <input
+                  className={styles.textInput}
+                  type="text"
+                  value={draft.device_label}
+                  onChange={(e) => patch({ device_label: e.target.value })}
+                />
+              </Row>
+              <Row
+                label="Blob storage quota"
+                description="Large payloads (screenshots, big files) beyond this size evict the oldest unpinned blob first."
+              >
+                <div className={styles.quotaRow}>
+                  <input
+                    className={styles.numberInput}
+                    type="number"
+                    min={0.1}
+                    step={0.5}
+                    value={Math.round((draft.blob_quota_bytes / GB) * 10) / 10}
+                    onChange={(e) => {
+                      const gb = Number(e.target.value);
+                      if (Number.isFinite(gb) && gb > 0) patch({ blob_quota_bytes: Math.round(gb * GB) });
+                    }}
+                  />
+                  <span className={styles.unit}>GB</span>
+                </div>
+              </Row>
+            </section>
+
+            <section className={styles.section}>
+              <Row label="Blocked apps" description="Clipboard activity from these apps is never captured." stacked>
+                <TagListInput values={draft.blocked_apps} onChange={(blocked_apps) => patch({ blocked_apps })} />
+              </Row>
+            </section>
+
+            <div className={styles.saveBar}>
+              {errorMessage && <span className={styles.error}>{errorMessage}</span>}
+              {savedFlash && <span className={styles.saved}>Saved</span>}
+              <button type="button" className={styles.saveButton} disabled={!dirty || saving} onClick={() => void handleSave()}>
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  description,
+  children,
+  stacked = false,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+  stacked?: boolean;
+}) {
+  return (
+    <div className={stacked ? `${styles.row} ${styles.stacked}` : styles.row}>
+      <div className={styles.rowText}>
+        <p className={styles.rowLabel}>{label}</p>
+        {description && <p className={styles.rowDescription}>{description}</p>}
+      </div>
+      <div className={styles.rowControl}>{children}</div>
+    </div>
+  );
+}

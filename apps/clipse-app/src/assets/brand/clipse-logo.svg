@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 216 64" role="img" aria-labelledby="title desc">
+  <title id="title">Clipse</title>
+  <desc id="desc">The Clipse eclipse mark and outlined wordmark for dark backgrounds.</desc>
+  <defs>
+    <linearGradient id="corona-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFC46B"/>
+      <stop offset="1" stop-color="#C97A10"/>
+    </linearGradient>
+    <mask id="mark-cutout" x="0" y="0" width="64" height="64" maskUnits="userSpaceOnUse">
+      <circle cx="29.2" cy="32.3" r="17.2" fill="#fff"/>
+      <circle cx="36.4" cy="25.4" r="15.8" fill="#000"/>
+    </mask>
+    <mask id="i-dot-cutout" x="108" y="13" width="14" height="14" maskUnits="userSpaceOnUse">
+      <circle cx="114.75" cy="19.7" r="3.35" fill="#fff"/>
+      <circle cx="116.2" cy="18.2" r="3.05" fill="#000"/>
+    </mask>
+  </defs>
+
+  <circle cx="30" cy="32" r="23" fill="none" stroke="url(#corona-gradient)" stroke-width="4.667"/>
+  <circle cx="29.2" cy="32.3" r="17.2" fill="#1B1E2D" mask="url(#mark-cutout)"/>
+
+  <g fill="#F4F5F8">
+    <path d="M91.5 23.7C88.7 19.9 85.1 18 80.5 18 72.2 18 66 24 66 32s6.2 14 14.5 14c4.7 0 8.5-1.9 11.3-5.7l-4.2-3.2c-1.8 2.5-4.1 3.7-7 3.7-5.2 0-9-3.7-9-8.8s3.8-8.8 9-8.8c2.8 0 5.1 1.2 6.9 3.6z"/>
+    <path d="M98 17h5.5v29H98z"/>
+    <path d="M112 26h5.5v20H112z"/>
+    <path fill-rule="evenodd" d="M126 26h5.3v2.4c2.1-2.1 4.8-3.1 8-3.1 6.2 0 10.9 4.5 10.9 10.7s-4.7 10.8-10.9 10.8c-3.1 0-5.7-.9-7.7-2.8v10H126zm5.3 10c0 3.6 2.6 6.1 6.5 6.1s6.6-2.5 6.6-6.1-2.7-6-6.6-6-6.5 2.4-6.5 6z"/>
+    <path d="m177 28.7-2.7 3.7c-2.1-1.7-4.4-2.5-7-2.5-2.3 0-3.6.7-3.6 1.8 0 1.2 1.3 1.7 5.4 2.5 6.5 1.2 9.1 3.1 9.1 6.1 0 3.8-3.6 6.4-9.4 6.4-4.6 0-8.2-1.4-11-4.1l3-3.8c2.2 2 5 3.1 8.1 3.1 2.5 0 3.9-.8 3.9-2 0-1.1-1.2-1.7-5.2-2.5-6.5-1.2-9.2-3-9.2-6.2 0-3.7 3.4-6.2 8.9-6.2 4 0 7.2 1.2 9.7 3.7z"/>
+    <path fill-rule="evenodd" d="M207 37.9h-17.1c.7 3 3.2 4.8 6.6 4.8 2.7 0 4.8-.9 6.7-2.7l3 3.3c-2.7 2.7-6 4-10.1 4-6.8 0-11.8-4.4-11.8-11 0-6.4 4.8-11 11.5-11 6.6 0 11.2 4.5 11.2 11.1zM190 33.9h11.7c-.7-2.7-2.9-4.4-5.8-4.4-3 0-5.2 1.7-5.9 4.4z"/>
+  </g>
+  <circle cx="114.75" cy="19.7" r="3.35" fill="#FFC46B" mask="url(#i-dot-cutout)"/>
+</svg>

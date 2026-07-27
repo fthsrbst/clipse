@@ -1,0 +1,29 @@
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-accent-ink);
+}
+
+.title {
+  margin: 0 0 2px;
+  color: var(--color-ink);
+  font-size: var(--type-sm);
+  font-weight: 600;
+}
+
+.reason {
+  margin: 0;
+  color: var(--color-ink-secondary);
+  font-size: var(--type-xs);
+  line-height: var(--leading-snug);
+}

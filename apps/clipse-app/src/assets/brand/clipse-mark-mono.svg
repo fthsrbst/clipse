@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
+  <title id="title">Clipse monochrome eclipse mark</title>
+  <desc id="desc">A bold eclipsed disc and corona for system-tinted icons.</desc>
+  <defs>
+    <mask id="eclipse-cutout" x="0" y="0" width="24" height="24" maskUnits="userSpaceOnUse">
+      <circle cx="11.6" cy="12.1" r="7" fill="#fff"/>
+      <circle cx="14.45" cy="9.3" r="6.25" fill="#000"/>
+    </mask>
+  </defs>
+  <circle cx="11.75" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.25"/>
+  <circle cx="11.6" cy="12.1" r="7" fill="currentColor" mask="url(#eclipse-cutout)"/>
+</svg>

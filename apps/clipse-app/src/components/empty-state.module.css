@@ -1,0 +1,35 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 48px 24px;
+  text-align: center;
+  flex: 1;
+}
+
+.mark {
+  opacity: 0.9;
+  margin-bottom: 4px;
+}
+
+.title {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: var(--type-md);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+.description {
+  margin: 0;
+  max-width: 32ch;
+  color: var(--color-ink-secondary);
+  font-size: var(--type-sm);
+  line-height: var(--leading-snug);
+}
+
+.action {
+  margin-top: 6px;
+}
