@@ -69,13 +69,22 @@ built by CI, but has never been run.
 
 ## F4 — Ship it
 
-Signed MSI, notarised DMG, AppImage + .deb, Tauri auto-updater, release
-workflow.
+The release workflow, the bundle configuration and the updater config are
+written — see `docs/packaging.md`. A `v*` tag builds MSI, NSIS, DMG, .app,
+AppImage and .deb across the three-platform matrix, and ships the daemon
+alongside the app because closing the window must not stop syncing.
 
-**Blocked on credentials.** Signing needs an Authenticode certificate and an
-Apple Developer ID that only the project owner can hold. The build and
-packaging steps can be written and dry-run unsigned; the signing and
-notarisation steps cannot be verified without them.
+**Signing is blocked on credentials** the project owner holds: an Authenticode
+certificate and an Apple Developer ID. The workflow reads them from secrets and
+produces unsigned artefacts with a warning when they are absent, rather than
+failing at the last step of a long build.
+
+**The auto-updater is deliberately off.** It verifies a signature over every
+release it downloads; enabling it without a real key would ship an update
+channel that trusts anything.
+
+**Nothing here has been built.** No installer has been produced, installed or
+launched. Treat this phase as a plan until someone tags a release.
 
 ## Where the tests are
 

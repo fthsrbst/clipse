@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Signing is gated on secrets rather than assumed. A fork, or this repository
+# before its certificates exist, still produces installable artefacts — they
+# are simply unsigned, and the job says so instead of failing at the last step
+# of a twenty-minute build.
+jobs:
+  bundle:
+    name: bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: windows
+          - os: macos-latest
+            artifact: macos
+          - os: ubuntu-latest
+            artifact: linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/clipse-app/pnpm-lock.yaml
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libxkbcommon-dev libssl-dev libwayland-dev
+
+      - name: Install frontend dependencies
+        working-directory: apps/clipse-app
+        run: pnpm install --frozen-lockfile
+
+      - name: Report signing status
+        id: signing
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ] && [ -n "${{ secrets.WINDOWS_CERTIFICATE }}" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ runner.os }}" = "macOS" ] && [ -n "${{ secrets.APPLE_CERTIFICATE }}" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No signing credentials for ${{ runner.os }}; producing unsigned artefacts."
+          fi
+
+      # The daemon ships alongside the app: closing the window must not stop
+      # syncing, so the installer needs both binaries.
+      - name: Build the daemon
+        run: cargo build --release -p clipsed --features clipse-store/encryption
+
+      - name: Bundle the app
+        working-directory: apps/clipse-app
+        env:
+          # Consumed by tauri-action's signing steps when present; harmless
+          # when empty, which is the unsigned path.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clipse-${{ matrix.artifact }}${{ steps.signing.outputs.signed == 'true' && '' || '-unsigned' }}
+          path: |
+            target/release/bundle/**/*.msi
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.dmg
+            target/release/bundle/**/*.AppImage
+            target/release/bundle/**/*.deb
+            target/release/clipsed*
+          if-no-files-found: error
