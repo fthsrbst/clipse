@@ -10,7 +10,17 @@ description = "Clipse background daemon: owns the clipboard, the history and the
 
 [dependencies]
 clipse-core.workspace = true
+clipse-ipc.workspace = true
+
 anyhow.workspace = true
-tokio.workspace = true
+async-trait.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+serde.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "signal", "fs"] }
+toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
