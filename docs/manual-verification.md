@@ -91,6 +91,12 @@ cargo run -p clipsed -- --data-dir ./.clipse-dev/b
 
 ## F3 — macOS notch
 
+Build it first — nobody has:
+
+```bash
+cd apps/clipse-notch && swift build
+```
+
 On a notched MacBook: the panel hovers open, shows the last three clips, is
 positioned from `NSScreen.safeAreaInsets` (verify on an external display too,
 where there is no notch), accepts a drag-and-drop, and animates the source

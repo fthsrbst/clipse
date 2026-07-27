@@ -95,6 +95,19 @@ jobs:
       - run: cargo check --target aarch64-apple-darwin -p clipse-clipboard
       - run: cargo check --target x86_64-pc-windows-msvc -p clipse-clipboard
 
+  notch:
+    name: macOS notch sidecar
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # This is the only thing standing between the sidecar and nobody knowing
+      # whether it compiles: it was written without a Mac, so CI is its first
+      # reader. Whether the panel actually sits under the notch is a separate
+      # question no build can answer.
+      - name: Build ClipseNotch
+        working-directory: apps/clipse-notch
+        run: swift build -c release
+
   ui:
     name: ui smoke
     runs-on: ubuntu-latest

@@ -67,14 +67,23 @@ fonts, no telemetry — and a Rust dependency does not violate it.
 
 ## F3 — macOS notch
 
-`ClipseNotch` Swift sidecar: borderless `NSPanel` at `.statusBar` level,
-positioned from `NSScreen.safeAreaInsets`, hover to open, last three clips,
-source-device animation, drop target.
+`apps/clipse-notch` is written: a borderless `NSPanel` at `.statusBar` level
+that never takes focus, positioned from `NSScreen.safeAreaInsets` so an
+external monitor gets sensible placement rather than a panel floating below
+the menu bar, hover to expand, three clips, an arrival animation for anything
+that came from another device, and a text drop target.
 
-**Blocked on hardware.** None of this can be built or checked without a Mac,
-and a notch panel is exactly the kind of thing that has to be seen to be
-believed. The macOS clipboard backend is type-checked against the target and
-built by CI, but has never been run.
+It is a sidecar rather than part of the Tauri app because a borderless AppKit
+panel is not something a webview can be, and because a crash in a decoration
+should not take the clipboard with it. It speaks newline-delimited JSON on
+stdin/stdout rather than the daemon's protocol, so the wire format exists in
+one place instead of two.
+
+**It has never been compiled or run.** It was written on Windows with no Swift
+toolchain. A CI job builds it on a macOS runner, which answers "does it
+compile"; whether the panel actually sits correctly under a notch is a
+question only someone looking at a MacBook can answer. Same for the macOS
+clipboard backend, which CI compiles and nobody has executed.
 
 ## F4 — Ship it
 
