@@ -6,8 +6,30 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Device identity, pairing and Noise sessions for Clipse: the trust foundation for syncing between a person's own devices, no server, no account."
 
 [dependencies]
 clipse-core.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+serde.workspace = true
+zeroize.workspace = true
+rand.workspace = true
+blake3.workspace = true
+hex.workspace = true
+rmp-serde.workspace = true
+
+# Noise_IK handshake and transport encryption.
+snow = { version = "0.10", default-features = false, features = ["default-resolver-crypto"] }
+# Long-term device identity keys. `static_secrets` gates `StaticSecret` (off by
+# default in 3.0 because most callers only need ephemeral DH); we need it for
+# a long-lived per-device key. `getrandom` wires up OS randomness for key
+# generation; `zeroize` makes the secret scalar wipe itself on drop.
+x25519-dalek = { version = "3.0", default-features = false, features = ["static_secrets", "getrandom", "zeroize", "precomputed-tables"] }
+# QR payload is a compact URI, not a JSON blob: msgpack (already a workspace
+# dependency, used by clipse-sync's wire format) plus base64url framing.
+base64 = "0.22"
+# Serialises fixed-size key/nonce arrays as a single msgpack `bin` value
+# instead of 32 individually-tagged integers — matters for a string that has
+# to survive as a QR code.
+serde_bytes = "0.11"
