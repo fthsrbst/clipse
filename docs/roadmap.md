@@ -79,11 +79,22 @@ should not take the clipboard with it. It speaks newline-delimited JSON on
 stdin/stdout rather than the daemon's protocol, so the wire format exists in
 one place instead of two.
 
-**It has never been compiled or run.** It was written on Windows with no Swift
-toolchain. A CI job builds it on a macOS runner, which answers "does it
-compile"; whether the panel actually sits correctly under a notch is a
-question only someone looking at a MacBook can answer. Same for the macOS
+`clipse-app` launches it and streams the three most recent clips in as
+newline-delimited JSON, reading pastes back out — so it is wired in rather
+than an orphan file. That bridge is `src-tauri/src/notch.rs`, compiled only on
+macOS.
+
+**None of it has been compiled or run here.** It was written on Windows with
+no Swift toolchain, and the Tauri app cannot even be cross-checked for macOS
+from this machine because its Objective-C dependencies need a C compiler for
+the target. CI is what compiles both halves: a macOS job builds the Swift
+package, and the macOS leg of the test matrix builds the bridge. That answers
+"does it compile". Whether the panel sits correctly under a notch is a
+question only someone looking at a MacBook can answer — as with the macOS
 clipboard backend, which CI compiles and nobody has executed.
+
+Bundling `ClipseNotch` into the .app is part of the packaging that has also
+never been run; see `docs/packaging.md`.
 
 ## F4 — Ship it
 

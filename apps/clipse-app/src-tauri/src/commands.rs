@@ -98,7 +98,13 @@ pub async fn apply(state: State<'_, Arc<AppState>>, id: ClipId) -> Result<(), Co
 
 #[tauri::command]
 pub async fn paste(state: State<'_, Arc<AppState>>, id: ClipId) -> Result<(), CommandError> {
-    match call(&state, Request::Paste { id }).await? {
+    paste_from(&state, id).await
+}
+
+/// The same thing without a `tauri::State` wrapper, so callers that are not
+/// commands — the notch sidecar bridge — can reach it.
+pub async fn paste_from(state: &Arc<AppState>, id: ClipId) -> Result<(), CommandError> {
+    match call(state, Request::Paste { id }).await? {
         Response::Ok => Ok(()),
         _ => Err(unexpected("paste")),
     }

@@ -1,6 +1,8 @@
 mod commands;
 mod connection;
 mod hotkey;
+#[cfg(target_os = "macos")]
+mod notch;
 mod popup;
 mod state;
 mod tray;
