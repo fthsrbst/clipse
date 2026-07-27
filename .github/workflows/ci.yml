@@ -52,13 +52,48 @@ jobs:
             libxkbcommon-dev libssl-dev xvfb
 
       # Clipboard integration tests need a display server on Linux.
+      #
+      # Deliberately not `--all-features`: that would switch clipse-store to
+      # SQLCipher on every platform, which drags in an OpenSSL build and turns
+      # a test job into a toolchain job. The encrypted path gets its own job
+      # below. See docs/decisions.md.
       - name: Test (Linux, headless X)
         if: runner.os == 'Linux'
-        run: xvfb-run -a cargo test --workspace --all-features
+        run: xvfb-run -a cargo test --workspace
 
       - name: Test
         if: runner.os != 'Linux'
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace
+
+  encryption:
+    name: store with SQLCipher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install OpenSSL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+      # Release builds ship with this on, so it has to stay green even though
+      # the default dev build does not use it.
+      - run: cargo test -p clipse-store --features encryption
+
+  cross-check:
+    name: cross-check platform backends
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      # Type-checks the macOS and Windows clipboard backends from Linux. The
+      # per-OS jobs above already build them natively; this one fails fast on
+      # a pull request without waiting for the whole matrix.
+      - run: cargo check --target aarch64-apple-darwin -p clipse-clipboard
+      - run: cargo check --target x86_64-pc-windows-msvc -p clipse-clipboard
 
   ui:
     name: ui smoke

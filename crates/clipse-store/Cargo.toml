@@ -11,3 +11,23 @@ authors.workspace = true
 clipse-core.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+blake3.workspace = true
+hex.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+# `bundled` compiles plain SQLite from source, so no system library or
+# toolchain beyond a C compiler is required. See the `encryption` feature
+# below for the SQLCipher alternative.
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[features]
+default = []
+# Switches the bundled SQLite for a bundled SQLCipher build and enables the
+# `PRAGMA key` code path. OFF by default: `bundled-sqlcipher-vendored-openssl`
+# builds OpenSSL from source, which on Windows requires Perl and NASM that are
+# not present on the primary dev machine (docs/decisions.md). CI and release
+# builds turn this on explicitly.
+encryption = ["rusqlite/bundled-sqlcipher-vendored-openssl"]
