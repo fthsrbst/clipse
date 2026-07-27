@@ -58,10 +58,6 @@ impl PairingState {
         matches!(self, Self::Offering { .. })
     }
 
-    pub fn is_awaiting_confirmation(&self) -> bool {
-        matches!(self, Self::AwaitingConfirmation { .. })
-    }
-
     /// Begin as the initiator. `addresses` are what a peer should dial us on.
     pub fn begin(
         &mut self,
@@ -295,8 +291,9 @@ mod tests {
         assert_eq!(bob_label, "bob");
         assert_eq!(alice_label, "alice");
 
-        // Nothing is trusted until the user says so.
-        assert!(alice_state.is_awaiting_confirmation());
+        // Nothing is trusted until the user says so: the digits exist, but no
+        // device has been handed over yet.
+        assert!(alice_state.digits().is_some());
         let paired_bob = alice_state.confirm().unwrap();
         assert_eq!(paired_bob.device_id, bob.device_id());
         assert!(matches!(alice_state, PairingState::Idle));
