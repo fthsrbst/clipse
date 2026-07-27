@@ -364,9 +364,20 @@ impl RequestHandler for Daemon {
                 }
             }
 
-            Request::ForgetDevice { .. } => Response::Error(IpcError::new(
+            // The ceremony itself is implemented and tested in `pairing`, and
+            // runs over the network in `clipse-net`. What is missing is only
+            // this wire-up, which needs the daemon to hold the device key, the
+            // trust set and the transport. Left deliberately rather than
+            // rushed: committing a pairing is the security boundary of the
+            // whole product, and a half-verified path here is worse than an
+            // honest refusal.
+            Request::BeginPairing
+            | Request::PairWithUri { .. }
+            | Request::ConfirmPairing { .. }
+            | Request::CancelPairing
+            | Request::ForgetDevice { .. } => Response::Error(IpcError::new(
                 ErrorCode::Unsupported,
-                "pairing arrives with peer sync",
+                "pairing is not yet exposed over IPC",
             )),
         }
     }

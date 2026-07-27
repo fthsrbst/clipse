@@ -103,6 +103,22 @@ pub enum Request {
     GetSettings,
     UpdateSettings(Box<Settings>),
 
+    /// Show a QR code: this device becomes the initiator and starts accepting
+    /// one pairing attempt. Expires on its own — see `PAIRING_OFFER_TTL_SECS`.
+    BeginPairing,
+    /// Scan a QR code: this device answers the offer in it.
+    PairWithUri {
+        uri: String,
+    },
+    /// Commit or discard the pairing whose six digits the user just compared.
+    /// The comparison is the security boundary, so nothing is trusted until
+    /// this arrives.
+    ConfirmPairing {
+        accept: bool,
+    },
+    /// Stop offering to pair.
+    CancelPairing,
+
     /// Turn this connection into an event stream as well. A UI opens one
     /// subscribed connection and keeps it for its lifetime.
     Subscribe,
@@ -120,6 +136,16 @@ pub enum Response {
     Status(Box<DaemonStatus>),
     Devices(Vec<PeerInfo>),
     Settings(Box<Settings>),
+    /// The string to render as a QR code, and when it stops being valid.
+    PairingOffer {
+        uri: String,
+        expires_at_ms: u64,
+    },
+    /// Both devices show this. The user compares them; they must match.
+    PairingCode {
+        digits: String,
+        peer_label: String,
+    },
     Ok,
     Error(IpcError),
 }

@@ -9,6 +9,7 @@ mod config;
 mod daemon;
 mod identity;
 mod ipc_server;
+mod pairing;
 mod paste;
 mod peers;
 mod sync;

@@ -200,6 +200,17 @@ async fn handle(daemon: &Daemon, request: Request) -> Response {
         Request::Devices => Response::Devices(Vec::<PeerInfo>::new()),
         Request::ForgetDevice { .. } => Response::Ok,
 
+        // The mock has no crypto and no network, so it cannot run a ceremony.
+        // Answering Unsupported is what the real daemon does today too, which
+        // means the UI's pairing screen sees the same thing either way.
+        Request::BeginPairing
+        | Request::PairWithUri { .. }
+        | Request::ConfirmPairing { .. }
+        | Request::CancelPairing => Response::Error(IpcError::new(
+            ErrorCode::Unsupported,
+            "the mock daemon does not pair",
+        )),
+
         Request::GetSettings => Response::Settings(Box::new(daemon.settings.lock().await.clone())),
 
         Request::UpdateSettings(new_settings) => {
