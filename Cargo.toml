@@ -41,7 +41,12 @@ async-trait = "0.1"
 bytes = "1.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-blake3 = "1.8"
+# `pure` keeps hashing in Rust instead of blake3's C/SIMD path. It costs
+# roughly 40 ms on the largest clip Clipse will ever accept (64 MB) and buys a
+# workspace that needs no C toolchain — which is what makes `cargo check
+# --target aarch64-apple-darwin` work from a Windows box, and what keeps the
+# build from failing for a contributor without cc.
+blake3 = { version = "1.8", features = ["pure"] }
 hex = "0.4"
 uuid = { version = "1.24", features = ["v4", "serde"] }
 parking_lot = "0.12"
