@@ -33,11 +33,17 @@ Windows.
   sessions, trust epochs that invalidate a removed device.
 - `clipse-sync` ✅ — merge rules, the three-layer loop guard, chunked transfer
   with resume and digest verification.
-- `clipse-net` — candidate addresses, mDNS records and tailnet resolution are
-  done; the QUIC transport and the discovery loop are in progress.
+- `clipse-net` ✅ — candidate addresses, tailnet resolution, mDNS record codec,
+  the QUIC transport with Noise_IK inside it, and the pairing ceremony on its
+  own ALPN.
+- `clipsed` ✅ — device key and paired set on disk, the sync driver, and the
+  peer manager. The daemon listens on QUIC and syncs; text, rich text and
+  blob payloads all cross.
 
-**Remaining:** wiring the engine into `clipsed`, and the two-daemon end-to-end
-test.
+**Remaining:** the mDNS browse/announce loop (the record codec is done, the
+loop is not), so peers are currently reached only through addresses recorded
+at pairing time; and the pairing flow over IPC, so pairing can be driven from
+the UI rather than only from tests.
 
 ## F3 — macOS notch
 
@@ -69,6 +75,6 @@ notarisation steps cannot be verified without them.
 | `clipse-store` | 24 | Quota, FTS, migration, concurrency |
 | `clipse-ipc` | 11 | Framing, plus the real platform transport |
 | `clipse-sync` | 34 | Merge convergence, loop guard, chunk assembly |
-| `clipse-net` | 28 | Dial order, tailnet parsing, mDNS records |
+| `clipse-net` | 49 | Dial order, tailnet parsing, framing, real QUIC loopback |
 | `clipse-crypto` | 21 | MITM simulation, SAS bias, tamper detection |
-| `clipsed` | 19 | 6 drive the real binary over its real socket |
+| `clipsed` | 42 | 11 sync two full daemon stacks; 6 drive the real binary |

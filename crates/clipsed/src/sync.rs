@@ -4,22 +4,14 @@
 //! for why a symmetric exchange deadlocks once both summaries outgrow the QUIC
 //! flow-control window.
 //!
-//! # What this does not do yet
+//! # Blobs
 //!
-//! Blob payloads are not fetched. A clip whose payload spilled to the blob
-//! store arrives with its row and its digest but without its bytes, so
-//! `Clip::is_complete` reports false and the UI shows it as incomplete. The
-//! machinery for the transfer exists and is tested on both sides
-//! (`clipse_sync::chunk`, `PeerLink::send_blob`); what is missing is the
-//! offer/want exchange in the turns below. Inline payloads — which is all text,
-//! HTML and RTF, and therefore the overwhelming majority of clips — sync fully.
-//!
-//! Nothing in the daemon calls this yet: the peer manager that dials, accepts
-//! and schedules sessions is the next piece. The protocol itself is exercised
-//! by the two-daemon tests at the bottom of this file, which stand up two
-//! complete stacks — store, clock, identity, QUIC endpoint — and sync between
-//! them.
-#![allow(dead_code, reason = "driven by tests until the peer manager lands")]
+//! Payloads too big to inline follow their clips in the same turn, on their own
+//! unidirectional streams. The **receiver** drives that exchange: having just
+//! applied the clips, it already knows exactly which digests it is missing, so
+//! it sends one list and then reads that many transfers in the same order. The
+//! sender needs no separate offer round and neither side needs a terminator
+//! message — the length of the list is the terminator.
 
 use std::sync::{Arc, Mutex};
 
@@ -74,6 +66,9 @@ pub struct SyncOutcome {
     pub sent: usize,
     pub received: usize,
     pub rejected: usize,
+    pub blobs_sent: usize,
+    pub blobs_received: usize,
+    pub blobs_rejected: usize,
 }
 
 /// Exchange histories with one peer, then return.
@@ -228,6 +223,38 @@ async fn offer_our_history(
         }
     }
 
+    // The receiver has applied those clips and now says which blob payloads it
+    // still lacks. An empty list is sent too, so this step is unconditional on
+    // both sides.
+    let blob_digests = match link.recv().await? {
+        SyncMessage::Want { hashes } => hashes,
+        other => {
+            return Err(SyncError::Unexpected {
+                expected: "Want (blobs)",
+                got: variant_name(&other).to_string(),
+            });
+        }
+    };
+
+    for digest in &blob_digests {
+        let store = Arc::clone(&ctx.store);
+        let digest = *digest;
+        let bytes = tokio::task::spawn_blocking(move || store.read_blob(&digest)).await?;
+        match bytes {
+            Ok(bytes) => {
+                link.send_blob(&bytes).await?;
+                outcome.blobs_sent += 1;
+            }
+            Err(e) => {
+                // The receiver is waiting for exactly this many streams, so a
+                // blob we cannot read still has to produce one — an empty one,
+                // which fails the receiver's digest check and is discarded.
+                warn!(error = %e, "a requested blob could not be read; sending nothing");
+                link.send_blob(&[]).await?;
+            }
+        }
+    }
+
     match link.recv().await? {
         SyncMessage::Ack { .. } => Ok(()),
         other => Err(SyncError::Unexpected {
@@ -283,11 +310,19 @@ async fn take_their_history(
     let expected = wanted.len();
     link.send(&SyncMessage::Want { hashes: wanted }).await?;
 
+    let mut missing_blobs: Vec<ContentHash> = Vec::new();
     for _ in 0..expected {
         match link.recv().await? {
             SyncMessage::Push { clip } => {
+                let blob_digests: Vec<ContentHash> = clip
+                    .payloads
+                    .iter()
+                    .filter(|p| p.is_blob())
+                    .map(|p| p.digest)
+                    .collect();
                 if apply(ctx, peer, *clip).await? {
                     outcome.received += 1;
+                    missing_blobs.extend(blob_digests);
                 } else {
                     outcome.rejected += 1;
                 }
@@ -299,6 +334,37 @@ async fn take_their_history(
                 });
             }
         }
+    }
+
+    // Ask for the payload bytes of everything just applied that we do not
+    // already hold. Order matters: the sender streams them back in this order.
+    let mut needed: Vec<ContentHash> = Vec::new();
+    for digest in missing_blobs {
+        let store = Arc::clone(&ctx.store);
+        let held = tokio::task::spawn_blocking(move || store.has_blob(&digest)).await??;
+        if !held && !needed.contains(&digest) {
+            needed.push(digest);
+        }
+    }
+
+    link.send(&SyncMessage::Want {
+        hashes: needed.clone(),
+    })
+    .await?;
+
+    for digest in &needed {
+        let bytes = link.recv_blob().await?;
+        if ContentHash::of(&bytes) != *digest {
+            // Discarded whole rather than stored partially: the clip stays
+            // incomplete and the next session asks again.
+            warn!("a blob did not match its digest; discarding");
+            outcome.blobs_rejected += 1;
+            continue;
+        }
+        let store = Arc::clone(&ctx.store);
+        let digest = *digest;
+        tokio::task::spawn_blocking(move || store.put_blob(&digest, &bytes)).await??;
+        outcome.blobs_received += 1;
     }
 
     let store = Arc::clone(&ctx.store);
@@ -379,11 +445,6 @@ fn variant_name(message: &SyncMessage) -> &'static str {
     }
 }
 
-/// Hashes the peer offered that we already hold, for diagnostics.
-pub fn already_held(entries: &[ClipSummary], have: impl Fn(&ContentHash) -> bool) -> usize {
-    entries.iter().filter(|e| have(&e.hash)).count()
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
@@ -458,6 +519,24 @@ mod tests {
                 addresses: vec![],
                 paired_at_ms: 0,
             });
+        }
+
+        /// Store a clip whose payload spilled to the blob store, the way
+        /// `capture::run` does for a screenshot.
+        fn capture_blob(&self, seed: u8, len: usize) -> (Clip, Vec<u8>) {
+            let bytes: Vec<u8> = (0..len).map(|i| (i as u8) ^ seed).collect();
+            let payload = Payload::new(ClipFormat::Png, bytes.clone());
+            assert!(payload.is_blob(), "test premise: this must spill to a blob");
+            let digest = payload.digest;
+
+            let clip = Clip::new(
+                vec![payload],
+                ClipSource::new(self.ctx.clock.device(), self.ctx.label.clone()),
+                self.ctx.clock.now(),
+            );
+            self.ctx.store.put_blob(&digest, &bytes).unwrap();
+            self.ctx.store.insert(&clip).unwrap();
+            (clip, bytes)
         }
 
         /// Store a locally-captured clip, the way `capture::run` would.
@@ -678,5 +757,93 @@ mod tests {
             .expect_err("an unpaired peer must not sync");
         assert!(!error.is_retryable());
         assert!(bob.texts().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_large_payload_arrives_with_its_bytes_not_just_its_row() {
+        let alice = TestDaemon::new("alice");
+        let bob = TestDaemon::new("bob");
+        pair(&alice, &bob);
+
+        // Comfortably over INLINE_MAX_BYTES, so it travels as a blob on its
+        // own stream rather than inside the Push.
+        let (clip, bytes) = alice.capture_blob(0xA5, 300_000);
+
+        let (out, into_bob) = sync(&alice, &bob).await;
+        assert_eq!(out.sent, 1);
+        assert_eq!(out.blobs_sent, 1, "the payload must actually be sent");
+        assert_eq!(into_bob.blobs_received, 1);
+        assert_eq!(into_bob.blobs_rejected, 0);
+
+        // The row arrived...
+        let received = bob
+            .ctx
+            .store
+            .by_hash(&clip.hash)
+            .unwrap()
+            .expect("clip row");
+        // ...and so did the bytes, unchanged.
+        let digest = received.payloads[0].digest;
+        assert!(
+            bob.ctx.store.has_blob(&digest).unwrap(),
+            "blob bytes missing"
+        );
+        assert_eq!(bob.ctx.store.read_blob(&digest).unwrap(), bytes);
+        assert!(
+            received.is_complete(|d| bob.ctx.store.has_blob(d).unwrap()),
+            "the clip should no longer report itself incomplete"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_blob_already_held_is_not_sent_again() {
+        let alice = TestDaemon::new("alice");
+        let bob = TestDaemon::new("bob");
+        pair(&alice, &bob);
+        alice.capture_blob(0x11, 200_000);
+
+        let (first, _) = sync(&alice, &bob).await;
+        assert_eq!(first.blobs_sent, 1);
+
+        let (second, into_bob) = sync(&alice, &bob).await;
+        assert_eq!(second.blobs_sent, 0, "re-sending 200 KB every session");
+        assert_eq!(into_bob.blobs_received, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_clip_mixing_inline_and_blob_payloads_survives_intact() {
+        let alice = TestDaemon::new("alice");
+        let bob = TestDaemon::new("bob");
+        pair(&alice, &bob);
+
+        // A screenshot pasted with a caption: one payload rides inside the
+        // Push, the other on its own stream.
+        let big: Vec<u8> = (0..250_000).map(|i| (i % 253) as u8).collect();
+        let clip = Clip::new(
+            vec![
+                Payload::new(ClipFormat::Text, b"a caption".to_vec()),
+                Payload::new(ClipFormat::Png, big.clone()),
+            ],
+            ClipSource::new(alice.ctx.clock.device(), "alice".to_string()),
+            alice.ctx.clock.now(),
+        );
+        let png_digest = clip
+            .payloads
+            .iter()
+            .find(|p| p.format == ClipFormat::Png)
+            .unwrap()
+            .digest;
+        alice.ctx.store.put_blob(&png_digest, &big).unwrap();
+        alice.ctx.store.insert(&clip).unwrap();
+
+        sync(&alice, &bob).await;
+
+        let received = bob.ctx.store.by_hash(&clip.hash).unwrap().expect("clip");
+        assert_eq!(received.text(), Some("a caption"), "inline half lost");
+        assert_eq!(
+            bob.ctx.store.read_blob(&png_digest).unwrap(),
+            big,
+            "blob half lost"
+        );
     }
 }
