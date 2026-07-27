@@ -1,0 +1,33 @@
+/target
+**/target
+Cargo.lock.bak
+
+node_modules
+dist
+dist-ssr
+.vite
+*.local
+
+apps/clipse-app/src-tauri/gen
+apps/clipse-app/src-tauri/target
+
+.DS_Store
+Thumbs.db
+*.swp
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Local runtime data — never commit a real clipboard history.
+/.clipse-dev
+*.db
+*.db-shm
+*.db-wal
+
+# Signing material
+*.p12
+*.pfx
+*.cer
+.env
+.env.*
+!.env.example

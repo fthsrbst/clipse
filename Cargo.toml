@@ -1,0 +1,68 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/clipse-core",
+    "crates/clipse-clipboard",
+    "crates/clipse-store",
+    "crates/clipse-crypto",
+    "crates/clipse-net",
+    "crates/clipse-sync",
+    "crates/clipse-ipc",
+    "crates/clipsed",
+
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/fatihxserbest/clipse"
+authors = ["Fatih Serbest"]
+
+[workspace.dependencies]
+clipse-core = { path = "crates/clipse-core" }
+clipse-clipboard = { path = "crates/clipse-clipboard" }
+clipse-store = { path = "crates/clipse-store" }
+clipse-crypto = { path = "crates/clipse-crypto" }
+clipse-net = { path = "crates/clipse-net" }
+clipse-sync = { path = "crates/clipse-sync" }
+clipse-ipc = { path = "crates/clipse-ipc" }
+
+anyhow = "1.0"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rmp-serde = "1.3"
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "fs", "net", "signal"] }
+tokio-util = "0.7"
+futures = "0.3"
+async-trait = "0.1"
+bytes = "1.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+blake3 = "1.8"
+hex = "0.4"
+uuid = { version = "1.24", features = ["v4", "serde"] }
+parking_lot = "0.12"
+once_cell = "1.21"
+directories = "6.0"
+zeroize = { version = "1.9", features = ["derive"] }
+rand = "0.10"
+toml = "1.1"
+tempfile = "3.27"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+# Dependencies are rebuilt rarely; optimizing them keeps clipboard polling
+# and QUIC handshakes fast enough to test sync behaviour in debug builds.
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,16 @@
+[package]
+name = "clipsed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Clipse background daemon: owns the clipboard, the history and the sync sessions."
+
+[dependencies]
+clipse-core.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
