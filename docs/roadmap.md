@@ -45,17 +45,16 @@ what it finds into the candidate list of devices it already trusts. Discovery
 never adds a peer — an advertisement is an address for someone you already
 paired with, not an invitation.
 
-**Remaining:** one wire-up. The ceremony runs over the network on its own
-ALPN, the daemon-side state machine that decides when a pairing may be
-committed is written and tested (`clipsed/src/pairing.rs`), and the IPC
-messages exist. What is missing is handing the daemon the device key, the
-trust set and the transport together so it can drive them. Until then
-`BeginPairing` and friends answer `Unsupported`, and devices are paired by
-recording each other's details directly.
+Pairing works end to end over IPC: one device shows a QR payload, the other
+answers it over the network, both compute six digits, and neither trusts
+anything until both are told the digits matched. Three tests drive two real
+daemon processes through it — including refusing the code, which must pair
+nothing.
 
-That last step was left rather than rushed: committing a pairing is the
-security boundary of the whole product, and a half-verified path there is
-worse than an honest refusal.
+**F2 is complete.** What is left in the app is a pairing *screen*: the IPC
+messages and events are in place (`BeginPairing`, `PairWithUri`,
+`ConfirmPairing`, `CancelPairing`, and the `pairing-code` / `pairing-ended`
+events reach the webview), but no UI renders them yet.
 
 ## F3 — macOS notch
 
@@ -89,4 +88,4 @@ notarisation steps cannot be verified without them.
 | `clipse-sync` | 34 | Merge convergence, loop guard, chunk assembly |
 | `clipse-net` | 52 | Dial order, tailnet parsing, framing, real QUIC loopback |
 | `clipse-crypto` | 21 | MITM simulation, SAS bias, tamper detection |
-| `clipsed` | 54 | 11 sync two full daemon stacks; 6 drive the real binary |
+| `clipsed` | 57 | 11 sync two full daemon stacks; 9 drive the real binary |

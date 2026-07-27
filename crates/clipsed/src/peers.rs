@@ -58,6 +58,11 @@ pub struct PeerManager {
     /// locked-down network. Sync still works through the addresses recorded at
     /// pairing time, so this is a degradation and not a failure.
     discovery: Option<Arc<Mutex<Discovery>>>,
+    /// Shared with the daemon rather than owned here, so an inbound pairing
+    /// attempt and the IPC request that authorised it are looking at one state
+    /// machine and not two.
+    pairing: Arc<tokio::sync::Mutex<crate::pairing::PairingState>>,
+    events: Option<tokio::sync::broadcast::Sender<clipse_ipc::Event>>,
 }
 
 impl PeerManager {
@@ -72,9 +77,27 @@ impl PeerManager {
             trust,
             peers: Mutex::new(HashMap::new()),
             discovery: None,
+            pairing: Arc::new(tokio::sync::Mutex::new(
+                crate::pairing::PairingState::default(),
+            )),
+            events: None,
         });
         manager.reload_from_trust();
         manager
+    }
+
+    /// Share the pairing state machine and the event channel with the daemon,
+    /// so an inbound ceremony can be authorised and reported.
+    pub fn with_pairing(
+        mut self: Arc<Self>,
+        pairing: Arc<tokio::sync::Mutex<crate::pairing::PairingState>>,
+        events: tokio::sync::broadcast::Sender<clipse_ipc::Event>,
+    ) -> Arc<Self> {
+        if let Some(manager) = Arc::get_mut(&mut self) {
+            manager.pairing = pairing;
+            manager.events = Some(events);
+        }
+        self
     }
 
     /// Start announcing this device and browsing for the others.
@@ -208,11 +231,44 @@ impl PeerManager {
                     });
                 }
                 Ok(Inbound::Pairing(exchange)) => {
-                    // Pairing is only ever accepted while the user has the
-                    // pairing screen open. Refusing silently is deliberate:
-                    // a stranger probing for a window learns nothing.
-                    debug!(addr = %exchange.remote_addr(), "refused an unexpected pairing attempt");
-                    exchange.reject();
+                    // Only accepted while the user has the pairing screen open.
+                    // Refusing silently is deliberate: a stranger probing for a
+                    // window learns nothing from the difference between "no
+                    // window" and "wrong answer".
+                    let outcome = {
+                        let mut pairing = self.pairing.lock().await;
+                        pairing.expire_if_stale();
+                        if pairing.is_offering() {
+                            Some(pairing.accept_answer(exchange.accept_bytes()))
+                        } else {
+                            None
+                        }
+                    };
+
+                    match outcome {
+                        Some(Ok(confirm)) => {
+                            let digits = self.pairing.lock().await.digits();
+                            if let Err(e) = exchange.confirm(&confirm).await {
+                                warn!(error = %e, "could not send the pairing confirmation");
+                                self.pairing.lock().await.cancel();
+                            } else if let Some((digits, peer_label)) = digits {
+                                // Both screens now show a code. Nothing is
+                                // trusted until the user says they match.
+                                self.emit(clipse_ipc::Event::PairingCode { digits, peer_label });
+                            }
+                        }
+                        Some(Err(e)) => {
+                            debug!(error = %e, "a pairing attempt was refused");
+                            exchange.reject();
+                            self.emit(clipse_ipc::Event::PairingEnded {
+                                reason: e.to_string(),
+                            });
+                        }
+                        None => {
+                            debug!(addr = %exchange.remote_addr(), "no pairing window is open");
+                            exchange.reject();
+                        }
+                    }
                 }
                 Err(e) => debug!(error = %e, "inbound connection ended"),
             }
@@ -295,6 +351,24 @@ impl PeerManager {
                 Err(message)
             }
         }
+    }
+
+    fn emit(&self, event: clipse_ipc::Event) {
+        if let Some(events) = &self.events {
+            let _ = events.send(event);
+        }
+    }
+
+    /// Carry a `PairingAccept` to the address from a scanned QR code.
+    pub async fn send_pairing_accept(
+        &self,
+        addr: SocketAddr,
+        accept: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        self.transport
+            .send_pairing_accept(addr, accept)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     fn note_success(&self, peer: DeviceId, addr: SocketAddr) {

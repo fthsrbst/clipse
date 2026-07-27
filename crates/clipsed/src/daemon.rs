@@ -34,6 +34,24 @@ pub struct Daemon {
     /// Absent when sync is disabled or the QUIC endpoint could not bind, in
     /// which case the status simply reports no peers rather than lying.
     peers: OnceLock<Arc<crate::peers::PeerManager>>,
+    /// Everything the pairing requests need. Absent when sync is off, in which
+    /// case pairing is refused rather than half-attempted.
+    pairing: OnceLock<PairingContext>,
+}
+
+/// What the pairing requests need in order to do anything.
+pub struct PairingContext {
+    pub identity: Arc<clipse_crypto::DeviceIdentity>,
+    /// The single owner of the trust set, shared with the QUIC transport, so a
+    /// new pairing takes effect for connections immediately.
+    pub trust: Arc<std::sync::RwLock<clipse_crypto::Trust>>,
+    /// A tokio mutex, not a std one: the ceremony is held across a network
+    /// round trip, and a std guard across an await would make the request
+    /// handler's future non-Send.
+    pub state: Arc<tokio::sync::Mutex<crate::pairing::PairingState>>,
+    pub peers: Arc<crate::peers::PeerManager>,
+    /// Where a peer should dial us. Resolved once at startup.
+    pub addresses: Vec<clipse_crypto::CandidateAddress>,
 }
 
 struct State {
@@ -60,7 +78,12 @@ impl Daemon {
             }),
             events: OnceLock::new(),
             peers: OnceLock::new(),
+            pairing: OnceLock::new(),
         }
+    }
+
+    pub fn set_pairing(&self, context: PairingContext) {
+        let _ = self.pairing.set(context);
     }
 
     pub fn set_peers(&self, peers: Arc<crate::peers::PeerManager>) {
@@ -182,6 +205,135 @@ impl Daemon {
 
     fn settings(&self) -> Settings {
         self.state.lock().expect(POISONED).config.settings.clone()
+    }
+
+    fn pairing_context(&self) -> Result<&PairingContext, Response> {
+        self.pairing.get().ok_or_else(|| {
+            Response::Error(IpcError::new(
+                ErrorCode::Unsupported,
+                "sync is disabled, so there is nothing to pair with",
+            ))
+        })
+    }
+
+    async fn begin_pairing(&self) -> Response {
+        let context = match self.pairing_context() {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
+        let label = self.settings().device_label;
+
+        let mut state = context.state.lock().await;
+        state.expire_if_stale();
+        match state.begin(&context.identity, label, context.addresses.clone()) {
+            Ok((uri, expires_at_ms)) => Response::PairingOffer { uri, expires_at_ms },
+            Err(e) => Response::Error(IpcError::new(ErrorCode::BadRequest, e.to_string())),
+        }
+    }
+
+    async fn pair_with_uri(&self, uri: &str) -> Response {
+        let context = match self.pairing_context() {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
+        let label = self.settings().device_label;
+        let peers = Arc::clone(&context.peers);
+
+        let outcome = {
+            // Held across the network round trip on purpose: a second
+            // PairWithUri arriving mid-ceremony must be refused, not
+            // interleaved with this one.
+            let mut state = context.state.lock().await;
+            state
+                .answer_offer(
+                    uri,
+                    &context.identity,
+                    label,
+                    context.addresses.clone(),
+                    |addresses, accept| async move {
+                        let addr = addresses
+                            .iter()
+                            .map(|address| match address {
+                                clipse_crypto::CandidateAddress::Lan(addr)
+                                | clipse_crypto::CandidateAddress::Tailnet(addr) => *addr,
+                            })
+                            .next()
+                            .ok_or_else(|| "that code carries no address".to_string())?;
+                        peers.send_pairing_accept(addr, &accept).await
+                    },
+                )
+                .await
+                .map(|()| state.digits())
+        };
+
+        match outcome {
+            Ok(Some((digits, peer_label))) => Response::PairingCode { digits, peer_label },
+            Ok(None) => Response::Error(IpcError::new(
+                ErrorCode::Internal,
+                "pairing produced no code",
+            )),
+            Err(e) => Response::Error(IpcError::new(ErrorCode::BadRequest, e.to_string())),
+        }
+    }
+
+    /// The user compared the digits. This is the only place a device is ever
+    /// trusted, and it happens only because a human said the codes matched.
+    async fn confirm_pairing(&self, accept: bool) -> Response {
+        let context = match self.pairing_context() {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
+
+        if !accept {
+            context.state.lock().await.cancel();
+            self.emit(Event::PairingEnded {
+                reason: "the codes did not match".into(),
+            });
+            return Response::Ok;
+        }
+
+        let peer = match context.state.lock().await.confirm() {
+            Ok(peer) => peer,
+            Err(e) => return Response::Error(IpcError::new(ErrorCode::BadRequest, e.to_string())),
+        };
+
+        {
+            let mut trust = context.trust.write().expect(POISONED);
+            trust.add_peer(peer);
+            // Written while the lock is held: a crash between the in-memory
+            // add and the file write would leave a device paired until the
+            // next restart and then silently not.
+            if let Err(e) = crate::identity::save_parts(&self.paths, &context.identity, &trust) {
+                return Response::Error(IpcError::new(ErrorCode::Internal, e.to_string()));
+            }
+        }
+
+        context.peers.reload_from_trust();
+        self.emit_status();
+        Response::Ok
+    }
+
+    fn forget_device(&self, device: clipse_core::DeviceId) -> Response {
+        let context = match self.pairing_context() {
+            Ok(context) => context,
+            Err(response) => return response,
+        };
+
+        {
+            let mut trust = context.trust.write().expect(POISONED);
+            // Bumps the trust epoch, which is what stops the removed device's
+            // existing sessions from authorising.
+            if let Err(e) = trust.remove_peer(&device) {
+                return Response::Error(IpcError::new(ErrorCode::NotFound, e.to_string()));
+            }
+            if let Err(e) = crate::identity::save_parts(&self.paths, &context.identity, &trust) {
+                return Response::Error(IpcError::new(ErrorCode::Internal, e.to_string()));
+            }
+        }
+
+        context.peers.reload_from_trust();
+        self.emit_status();
+        Response::Ok
     }
 
     /// Put a stored clip back on the clipboard, blobs and all.
@@ -364,21 +516,16 @@ impl RequestHandler for Daemon {
                 }
             }
 
-            // The ceremony itself is implemented and tested in `pairing`, and
-            // runs over the network in `clipse-net`. What is missing is only
-            // this wire-up, which needs the daemon to hold the device key, the
-            // trust set and the transport. Left deliberately rather than
-            // rushed: committing a pairing is the security boundary of the
-            // whole product, and a half-verified path here is worse than an
-            // honest refusal.
-            Request::BeginPairing
-            | Request::PairWithUri { .. }
-            | Request::ConfirmPairing { .. }
-            | Request::CancelPairing
-            | Request::ForgetDevice { .. } => Response::Error(IpcError::new(
-                ErrorCode::Unsupported,
-                "pairing is not yet exposed over IPC",
-            )),
+            Request::BeginPairing => self.begin_pairing().await,
+            Request::PairWithUri { uri } => self.pair_with_uri(&uri).await,
+            Request::ConfirmPairing { accept } => self.confirm_pairing(accept).await,
+            Request::CancelPairing => {
+                if let Some(context) = self.pairing.get() {
+                    context.state.lock().await.cancel();
+                }
+                Response::Ok
+            }
+            Request::ForgetDevice { device } => self.forget_device(device),
         }
     }
 }

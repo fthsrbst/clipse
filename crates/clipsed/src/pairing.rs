@@ -13,12 +13,6 @@
 //! That last point is the whole design. `clipse-crypto` guarantees a
 //! man-in-the-middle cannot make the two sides compute the *same* digits; it
 //! cannot guarantee anyone looked. This module is what makes looking matter.
-//!
-//! The daemon does not drive this yet — `Request::BeginPairing` and friends
-//! return `Unsupported`. Wiring it needs the daemon to hold the device key,
-//! the trust set and the transport all at once, and that wiring is the last
-//! thing standing between the ceremony and the UI.
-#![allow(dead_code, reason = "driven by tests until the IPC wire-up lands")]
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

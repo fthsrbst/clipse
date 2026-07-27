@@ -77,7 +77,7 @@ impl std::fmt::Debug for Identity {
 }
 
 impl Identity {
-    fn file(paths: &Paths) -> PathBuf {
+    pub(crate) fn file(paths: &Paths) -> PathBuf {
         paths.root().join("identity.json")
     }
 
@@ -125,14 +125,23 @@ impl Identity {
     /// Write atomically. A half-written identity file would cost the user
     /// every pairing they have.
     pub fn save(&self, paths: &Paths) -> Result<(), IdentityError> {
-        let path = Self::file(paths);
-        let stored = StoredRef {
-            identity: &self.identity,
-            trust: &self.trust,
-        };
-        let text = serde_json::to_string_pretty(&stored)?;
-        write_atomically(&path, text.as_bytes())
+        save_parts(paths, &self.identity, &self.trust)
     }
+}
+
+/// Persist a key and a trust set that live in separate `Arc`s.
+///
+/// Once the daemon is running, the trust set is owned by an `RwLock` shared
+/// with the QUIC transport — there is deliberately only one copy, so that
+/// pairing cannot update one and leave the other stale. This is how it gets
+/// written back without reassembling an `Identity`.
+pub fn save_parts(
+    paths: &Paths,
+    identity: &DeviceIdentity,
+    trust: &Trust,
+) -> Result<(), IdentityError> {
+    let text = serde_json::to_string_pretty(&StoredRef { identity, trust })?;
+    write_atomically(&Identity::file(paths), text.as_bytes())
 }
 
 fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), IdentityError> {

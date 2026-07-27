@@ -98,6 +98,14 @@ fn forward_event(app: &AppHandle, event: Event) {
         Event::Suppressed { reason } => {
             let _ = app.emit("suppressed", reason);
         }
+        // Both devices show these six digits and the user compares them, so
+        // they go straight to the webview with no interpretation here.
+        Event::PairingCode { digits, peer_label } => {
+            let _ = app.emit("pairing-code", (digits, peer_label));
+        }
+        Event::PairingEnded { reason } => {
+            let _ = app.emit("pairing-ended", reason);
+        }
     }
 }
 

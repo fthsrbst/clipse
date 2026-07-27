@@ -163,6 +163,16 @@ pub enum Event {
     Suppressed {
         reason: String,
     },
+    /// Someone answered our QR code. Show these digits next to theirs; the
+    /// user comparing them is what makes the pairing safe.
+    PairingCode {
+        digits: String,
+        peer_label: String,
+    },
+    /// The ceremony ended without a pairing — expired, refused, or failed.
+    PairingEnded {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, thiserror::Error)]

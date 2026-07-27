@@ -106,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
     let config_device = config.device;
     let device_fingerprint = device_key.fingerprint().to_string();
     let loop_guard = Arc::new(std::sync::Mutex::new(clipse_sync::LoopGuard::default()));
+    let pairing_state = Arc::new(tokio::sync::Mutex::new(pairing::PairingState::default()));
 
     let daemon = Arc::new(daemon::Daemon::new(
         paths,
@@ -116,12 +117,12 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let server = ipc_server::IpcServer::new(Arc::clone(&daemon));
-    daemon.set_event_sink(server.events());
+    let events = server.events();
+    daemon.set_event_sink(events.clone());
 
     let capturing = tokio::spawn(capture::run(Arc::clone(&daemon), captures));
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let serving = tokio::spawn(server.serve(listener, shutdown_rx.clone()));
 
     // Peer sync. Bound on any interface so a peer on the LAN can reach us;
     // port 0 because the port is advertised, not fixed.
@@ -152,7 +153,8 @@ async fn main() -> anyhow::Result<()> {
                     std::env::consts::OS,
                 );
                 let quic_port = transport.local_addr().port();
-                let mut manager = peers::PeerManager::new(transport, ctx, trust);
+                let mut manager =
+                    peers::PeerManager::new(Arc::clone(&transport), ctx, Arc::clone(&trust));
                 match clipse_net::Discovery::start(&record, quic_port) {
                     Ok(discovery) => {
                         info!("announcing on the local network");
@@ -162,10 +164,23 @@ async fn main() -> anyhow::Result<()> {
                     // reachable, they just will not be re-found automatically.
                     Err(e) => warn!(error = %e, "mDNS unavailable; discovery is off"),
                 }
+                let manager = manager.with_pairing(Arc::clone(&pairing_state), events);
                 daemon.set_peers(Arc::clone(&manager));
+
+                let addresses = reachable_addresses(quic_port);
+                if addresses.is_empty() {
+                    warn!("no reachable address found; a QR code would be undialable");
+                }
+                daemon.set_pairing(daemon::PairingContext {
+                    identity: Arc::clone(&device_key),
+                    trust,
+                    state: Arc::clone(&pairing_state),
+                    peers: Arc::clone(&manager),
+                    addresses,
+                });
                 Some((
                     tokio::spawn(Arc::clone(&manager).accept_loop(shutdown_rx.clone())),
-                    tokio::spawn(manager.dial_loop(shutdown_rx)),
+                    tokio::spawn(manager.dial_loop(shutdown_rx.clone())),
                 ))
             }
             Err(e) => {
@@ -180,6 +195,12 @@ async fn main() -> anyhow::Result<()> {
         info!("sync is disabled in settings; running local-only");
         None
     };
+
+    // Served last, on purpose. The listener is bound early so a second daemon
+    // fails fast, but answering requests before pairing and sync are wired up
+    // would mean a UI connecting at the wrong moment gets told sync is
+    // disabled when it is merely not ready yet.
+    let serving = tokio::spawn(server.serve(listener, shutdown_rx));
 
     wait_for_shutdown_signal().await;
     info!("shutting down");
@@ -209,4 +230,37 @@ async fn wait_for_shutdown_signal() {
     {
         let _ = tokio::signal::ctrl_c().await;
     }
+}
+
+/// Addresses a peer could dial us on, for the QR code.
+///
+/// The QUIC endpoint binds `0.0.0.0`, which is not something anyone can dial,
+/// so the primary interface address is found by opening a UDP socket toward a
+/// public address and asking which local address the routing table chose. No
+/// packet is ever sent — this is a routing-table query wearing a socket.
+fn reachable_addresses(port: u16) -> Vec<clipse_crypto::CandidateAddress> {
+    use clipse_crypto::CandidateAddress;
+
+    let mut addresses = Vec::new();
+
+    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0")
+        && socket.connect("198.51.100.1:9").is_ok()
+        && let Ok(local) = socket.local_addr()
+    {
+        addresses.push(CandidateAddress::Lan(std::net::SocketAddr::new(
+            local.ip(),
+            port,
+        )));
+    }
+
+    // Tailscale is optional; a machine without it is a LAN-only Clipse.
+    if let Ok(status) = clipse_net::TailnetStatus::query()
+        && let Some(ip) = status.this_device.and_then(|device| device.preferred_ip())
+    {
+        addresses.push(CandidateAddress::Tailnet(std::net::SocketAddr::new(
+            ip, port,
+        )));
+    }
+
+    addresses
 }

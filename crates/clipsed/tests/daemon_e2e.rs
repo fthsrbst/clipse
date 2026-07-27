@@ -368,3 +368,170 @@ fn ipc_version_is_the_one_the_daemon_was_built_against() {
     // Guards against a client and daemon drifting apart silently.
     assert_eq!(IPC_VERSION, 1);
 }
+
+/// Two real daemon processes, paired the way the UI will do it.
+///
+/// This is the whole ceremony over the real IPC surface and the real network:
+/// one shows a code, the other scans it, both compute six digits, and neither
+/// trusts anything until both are told the digits matched.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_daemons_pair_through_the_ipc_surface() {
+    let dir_a = TempDir::new().unwrap();
+    let dir_b = TempDir::new().unwrap();
+    let (_daemon_a, endpoint_a) = start_daemon(&dir_a).await;
+    let (_daemon_b, endpoint_b) = start_daemon(&dir_b).await;
+
+    let mut alice = connect(&endpoint_a).await;
+    let mut bob = connect(&endpoint_b).await;
+
+    // Alice's second connection watches for the code her daemon computes when
+    // someone answers — the UI does exactly this.
+    let mut alice_events = connect(&endpoint_a).await.subscribe().await.unwrap();
+
+    let uri = match alice.call(Request::BeginPairing).await.unwrap() {
+        Response::PairingOffer { uri, expires_at_ms } => {
+            assert!(uri.starts_with("clipse://pair/"), "not a QR payload: {uri}");
+            assert!(expires_at_ms > 0, "an offer must expire");
+            uri
+        }
+        other => panic!("BeginPairing: {other:?}"),
+    };
+
+    // Bob scans it. His daemon answers Alice's over the network and comes back
+    // with the digits to show.
+    let bob_digits = match bob.call(Request::PairWithUri { uri }).await.unwrap() {
+        Response::PairingCode { digits, peer_label } => {
+            assert!(!peer_label.is_empty(), "the other device should be named");
+            digits
+        }
+        other => panic!("PairWithUri: {other:?}"),
+    };
+
+    let alice_digits = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Event::PairingCode { digits, .. } = alice_events.next().await.unwrap() {
+                return digits;
+            }
+        }
+    })
+    .await
+    .expect("alice never got a pairing code");
+
+    // The user is looking at two screens. If these differed, they would refuse.
+    assert_eq!(
+        alice_digits, bob_digits,
+        "the two devices computed different codes"
+    );
+
+    // Before confirmation, neither device trusts the other.
+    for client in [&mut alice, &mut bob] {
+        match client.call(Request::Status).await.unwrap() {
+            Response::Status(status) => assert_eq!(
+                status.peers_total, 0,
+                "a device was trusted before anyone confirmed"
+            ),
+            other => panic!("Status: {other:?}"),
+        }
+    }
+
+    for client in [&mut alice, &mut bob] {
+        assert!(matches!(
+            client
+                .call(Request::ConfirmPairing { accept: true })
+                .await
+                .unwrap(),
+            Response::Ok
+        ));
+    }
+
+    for client in [&mut alice, &mut bob] {
+        match client.call(Request::Status).await.unwrap() {
+            Response::Status(status) => {
+                assert_eq!(status.peers_total, 1, "confirmation did not pair them")
+            }
+            other => panic!("Status: {other:?}"),
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn refusing_the_code_pairs_nothing() {
+    let dir_a = TempDir::new().unwrap();
+    let dir_b = TempDir::new().unwrap();
+    let (_daemon_a, endpoint_a) = start_daemon(&dir_a).await;
+    let (_daemon_b, endpoint_b) = start_daemon(&dir_b).await;
+
+    let mut alice = connect(&endpoint_a).await;
+    let mut bob = connect(&endpoint_b).await;
+
+    let uri = match alice.call(Request::BeginPairing).await.unwrap() {
+        Response::PairingOffer { uri, .. } => uri,
+        other => panic!("BeginPairing: {other:?}"),
+    };
+    assert!(matches!(
+        bob.call(Request::PairWithUri { uri }).await.unwrap(),
+        Response::PairingCode { .. }
+    ));
+
+    // The user says the codes do not match — which is what a MITM would cause.
+    for client in [&mut alice, &mut bob] {
+        assert!(matches!(
+            client
+                .call(Request::ConfirmPairing { accept: false })
+                .await
+                .unwrap(),
+            Response::Ok
+        ));
+    }
+
+    for client in [&mut alice, &mut bob] {
+        match client.call(Request::Status).await.unwrap() {
+            Response::Status(status) => assert_eq!(
+                status.peers_total, 0,
+                "a refused pairing was committed anyway"
+            ),
+            other => panic!("Status: {other:?}"),
+        }
+    }
+
+    // And confirming afterwards cannot resurrect it.
+    assert!(matches!(
+        alice
+            .call(Request::ConfirmPairing { accept: true })
+            .await
+            .unwrap_err(),
+        clipse_ipc::client::ClientError::Daemon(_)
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn answering_a_device_that_is_not_offering_fails_cleanly() {
+    let dir_a = TempDir::new().unwrap();
+    let dir_b = TempDir::new().unwrap();
+    let (_daemon_a, endpoint_a) = start_daemon(&dir_a).await;
+    let (_daemon_b, endpoint_b) = start_daemon(&dir_b).await;
+
+    let mut alice = connect(&endpoint_a).await;
+    let mut bob = connect(&endpoint_b).await;
+
+    let uri = match alice.call(Request::BeginPairing).await.unwrap() {
+        Response::PairingOffer { uri, .. } => uri,
+        other => panic!("BeginPairing: {other:?}"),
+    };
+
+    // Alice closes the pairing screen before Bob gets round to scanning.
+    assert!(matches!(
+        alice.call(Request::CancelPairing).await.unwrap(),
+        Response::Ok
+    ));
+
+    assert!(
+        bob.call(Request::PairWithUri { uri }).await.is_err(),
+        "a closed pairing window must refuse the answer"
+    );
+
+    match bob.call(Request::Status).await.unwrap() {
+        Response::Status(status) => assert_eq!(status.peers_total, 0),
+        other => panic!("Status: {other:?}"),
+    }
+}
