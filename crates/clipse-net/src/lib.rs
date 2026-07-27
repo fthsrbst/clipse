@@ -1,1 +1,18 @@
-// Scaffold — implemented in F1.
+//! How one Clipse daemon finds another.
+//!
+//! There is one transport (QUIC) and one ordered list of addresses to try, not
+//! two separate networks — see `docs/decisions.md`. A tailnet address is just
+//! another socket address; what differs is only where it came from and how far
+//! down the dial order it sits.
+//!
+//! This crate is where a future transport (Bluetooth, someone's own relay)
+//! would plug in: [`candidate::Reachability`] gains a variant and the dial
+//! order gains a rule, and nothing in `clipse-sync` changes.
+
+pub mod candidate;
+pub mod mdns;
+pub mod tailnet;
+
+pub use candidate::{Candidate, CandidateList, Reachability};
+pub use mdns::{SERVICE_TYPE, ServiceRecord};
+pub use tailnet::{TailnetError, TailnetPeer, TailnetStatus};

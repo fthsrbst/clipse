@@ -6,8 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Peer reachability for Clipse: candidate addresses, mDNS records, tailnet resolution."
 
 [dependencies]
 clipse-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
