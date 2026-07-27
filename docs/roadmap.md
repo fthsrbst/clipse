@@ -57,10 +57,13 @@ and asks whether they match — and the button that commits the pairing is
 disabled anywhere the code is not visible, which the reducer behind it is
 tested for exhaustively.
 
-The offer is a copyable `clipse://pair/...` string rather than a QR image.
-Drawing a real QR code means writing an encoder, and this app takes no
-dependency it does not need; copying the string pairs devices identically. The
-QR rendering is the one piece of the original F2 description still outstanding.
+The offer appears as a QR code *and* as a copyable string. The string is not a
+fallback nobody uses: pairing a desktop to a desktop means copying text,
+because neither has a camera pointed at the other.
+
+The QR is rendered to SVG in the Tauri command by a compiled-in encoder. The
+rule this app follows is that nothing reaches out at runtime — no CDN, no
+fonts, no telemetry — and a Rust dependency does not violate it.
 
 ## F3 — macOS notch
 

@@ -7,7 +7,7 @@ import {
   pairingReducer,
 } from "./pairing-machine";
 
-const offer = { uri: "clipse://pair/abc", expires_at_ms: 1_000 };
+const offer = { uri: "clipse://pair/abc", expires_at_ms: 1_000, svg: null };
 const code = { digits: "123 456", peer_label: "laptop" };
 
 function run(from: PairingState, ...actions: Parameters<typeof pairingReducer>[1][]) {

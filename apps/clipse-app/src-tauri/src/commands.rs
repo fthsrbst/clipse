@@ -161,6 +161,10 @@ pub async fn devices(state: State<'_, Arc<AppState>>) -> Result<Vec<PeerInfo>, C
 pub struct PairingOffer {
     pub uri: String,
     pub expires_at_ms: u64,
+    /// The same offer as a self-contained SVG, ready to drop into the DOM.
+    /// `None` if the payload could not be encoded, in which case the screen
+    /// falls back to the copyable string — which pairs devices identically.
+    pub svg: Option<String>,
 }
 
 /// The six digits both devices show. The user compares them; matching is what
@@ -175,9 +179,38 @@ pub struct PairingCode {
 #[tauri::command]
 pub async fn begin_pairing(state: State<'_, Arc<AppState>>) -> Result<PairingOffer, CommandError> {
     match call(&state, Request::BeginPairing).await? {
-        Response::PairingOffer { uri, expires_at_ms } => Ok(PairingOffer { uri, expires_at_ms }),
+        Response::PairingOffer { uri, expires_at_ms } => {
+            let svg = render_qr(&uri);
+            Ok(PairingOffer {
+                uri,
+                expires_at_ms,
+                svg,
+            })
+        }
         _ => Err(unexpected("begin_pairing")),
     }
+}
+
+/// The offer as an SVG QR code.
+///
+/// Error correction is deliberately the lowest level the payload allows: the
+/// code is read from a screen a foot away, not off a printed label in a
+/// warehouse, and a lower level keeps the modules large enough to scan on a
+/// small window.
+fn render_qr(uri: &str) -> Option<String> {
+    use qrcode::{EcLevel, QrCode, render::svg};
+
+    let code = QrCode::with_error_correction_level(uri, EcLevel::L).ok()?;
+    Some(
+        code.render::<svg::Color<'_>>()
+            .min_dimensions(200, 200)
+            // currentColor so the code inherits the theme instead of being a
+            // white rectangle on a dark background.
+            .dark_color(svg::Color("currentColor"))
+            .light_color(svg::Color("transparent"))
+            .quiet_zone(true)
+            .build(),
+    )
 }
 
 #[tauri::command]

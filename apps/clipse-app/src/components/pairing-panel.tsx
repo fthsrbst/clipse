@@ -6,10 +6,9 @@
  * exists to get to that question honestly, and the confirm button is disabled
  * until both codes are actually on screen.
  *
- * The offer is shown as a copyable string rather than a QR image: drawing a
- * real QR code means writing an encoder, and this app takes no dependency it
- * does not need. Copying the string between devices pairs them exactly the
- * same way.
+ * The offer is shown as a QR code and as a copyable string. The string is not
+ * a fallback nobody uses: pairing a desktop to a desktop means copying text,
+ * because neither has a camera pointed at the other.
  */
 
 import { useEffect, useReducer, useState } from "react";
@@ -125,9 +124,19 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
       {state.step === "offering" && (
         <div className={styles.start}>
           <p className={styles.lead}>
-            Paste this into Clipse on the other computer. It stops working in a
-            few minutes.
+            Scan this on the other computer, or paste the text below into
+            Clipse there. It stops working in a few minutes.
           </p>
+          {state.offer.svg && (
+            <div
+              className={styles.qr}
+              role="img"
+              aria-label="Pairing code"
+              // The SVG comes from our own Rust command, not from anything the
+              // network said, so there is nothing here to sanitise.
+              dangerouslySetInnerHTML={{ __html: state.offer.svg }}
+            />
+          )}
           <code className={styles.offer}>{state.offer.uri}</code>
           <div className={styles.row}>
             <button

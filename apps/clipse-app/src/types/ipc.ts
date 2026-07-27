@@ -132,6 +132,9 @@ export function isCommandError(value: unknown): value is CommandError {
 export interface PairingOffer {
   uri: string;
   expires_at_ms: number;
+  /** The offer as a self-contained SVG. Null when it could not be encoded, in
+   * which case the copyable string is the whole story. */
+  svg: string | null;
 }
 
 /** Both devices compute these. The user compares them. */

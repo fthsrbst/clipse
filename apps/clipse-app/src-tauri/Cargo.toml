@@ -30,6 +30,11 @@ tracing-subscriber.workspace = true
 
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-opener = "2"
+
+# Renders the pairing offer as an SVG. A compiled-in encoder, not a network
+# call: the rule this app follows is that nothing reaches out at runtime, and
+# a Rust dependency does not.
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 tauri-plugin-global-shortcut = "2"
 
 [dev-dependencies]
