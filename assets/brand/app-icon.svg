@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Clipse app icon</title>
+  <desc id="desc">The Clipse eclipse glowing on a rounded deep-night tile.</desc>
+  <defs>
+    <linearGradient id="clipse-app-corona" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFC46B"/>
+      <stop offset="1" stop-color="#C97A10"/>
+    </linearGradient>
+    <radialGradient id="clipse-app-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#F5A524" stop-opacity=".2"/>
+      <stop offset=".58" stop-color="#F5A524" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#F5A524" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="clipse-app-cutout" x="0" y="0" width="1024" height="1024" maskUnits="userSpaceOnUse">
+      <circle cx="492" cy="526" r="210" fill="#fff"/>
+      <circle cx="590" cy="430" r="196" fill="#000"/>
+    </mask>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#12141F"/>
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="#0B0C13"/>
+  <rect x="34" y="34" width="956" height="956" rx="214" fill="none" stroke="#1B1E2D" stroke-width="4"/>
+  <circle cx="500" cy="518" r="410" fill="url(#clipse-app-glow)"/>
+  <circle cx="500" cy="518" r="286" fill="none" stroke="url(#clipse-app-corona)" stroke-width="74.667"/>
+  <circle cx="492" cy="526" r="210" fill="#1B1E2D" mask="url(#clipse-app-cutout)"/>
+</svg>

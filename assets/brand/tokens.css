@@ -1,0 +1,180 @@
+/* Clipse design tokens.
+ *
+ * Two rules when editing:
+ *   1. Semantic tokens (--color-*) are what the UI uses. Raw palette values
+ *      (--night-*, --amber-*) are only ever referenced from here.
+ *   2. The light theme is a design, not an inversion. Amber at its dark-theme
+ *      value fails contrast on white, so light mode has its own accent step. */
+
+:root {
+  /* Palette — night */
+  --night-950: #07080D;
+  --night-900: #0B0C13;
+  --night-800: #12141F;
+  --night-700: #1B1E2D;
+  --night-600: #272B3E;
+
+  /* Palette — amber (the corona) */
+  --amber-300: #FFD79B;
+  --amber-400: #FFC46B;
+  --amber-500: #F5A524;
+  --amber-600: #C97A10;
+  --amber-700: #8F5A0A;
+
+  /* Palette — day */
+  --day-50: #FFFFFF;
+  --day-100: #FAFAFC;
+  --day-200: #F1F2F6;
+  --day-300: #E3E5EC;
+  --day-400: #CBCFDB;
+
+  /* Text ramps */
+  --text-primary: #F4F5F8;
+  --text-secondary: #A9AEC2;
+  --text-muted: #6B7189;
+
+  --ink-primary: #14161F;
+  --ink-secondary: #474D61;
+  --ink-muted: #767C91;
+
+  /* Semantic — dark is the default; the product is designed dark-first. */
+  --color-canvas: var(--night-900);
+  --color-surface: var(--night-800);
+  --color-surface-raised: var(--night-700);
+  --color-surface-hover: var(--night-600);
+
+  --color-ink: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+
+  --color-border: #232739;
+  --color-border-strong: #333853;
+
+  --color-accent: var(--amber-500);
+  /* Accent used for text and small glyphs, where contrast must hold. */
+  --color-accent-ink: var(--amber-400);
+  --color-accent-soft: rgba(245, 165, 36, 0.14);
+  --corona-gradient: linear-gradient(135deg, var(--amber-400), var(--amber-600));
+
+  --color-danger: #F2666A;
+  --color-success: #5FD08A;
+
+  --shadow-popup: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-raised: 0 2px 12px rgba(0, 0, 0, 0.35);
+
+  /* Motion */
+  --ease-spring: cubic-bezier(.22,1,.36,1);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --duration-instant: 90ms;
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Type */
+  --font-sans: "Inter", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+
+  --type-xs: 0.75rem;
+  --type-sm: 0.875rem;
+  --type-base: 1rem;
+  --type-md: 1.125rem;
+  --type-lg: 1.25rem;
+  --type-xl: 1.5rem;
+  --type-2xl: 2rem;
+  --type-3xl: 2.5rem;
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+
+  --tracking-tight: -0.011em;
+  --tracking-wide: 0.04em;
+}
+
+/* Light theme.
+ *
+ * Not an inversion: the canvas is a hair cooler than the surfaces so cards sit
+ * *above* the page rather than below it, and the accent drops two steps
+ * because --amber-500 on white is about 2.5:1 — fine for a filled button,
+ * nowhere near enough for text. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-canvas: var(--day-200);
+    --color-surface: var(--day-50);
+    --color-surface-raised: var(--day-50);
+    --color-surface-hover: var(--day-100);
+
+    --color-ink: var(--ink-primary);
+    --color-ink-secondary: var(--ink-secondary);
+    --color-ink-muted: var(--ink-muted);
+
+    --color-border: var(--day-300);
+    --color-border-strong: var(--day-400);
+
+    --color-accent: var(--amber-600);
+    --color-accent-ink: var(--amber-700);
+    --color-accent-soft: rgba(201, 122, 16, 0.12);
+    --corona-gradient: linear-gradient(135deg, var(--amber-500), var(--amber-700));
+
+    --color-danger: #C0323A;
+    --color-success: #1F7A4C;
+
+    --shadow-popup: 0 16px 40px rgba(20, 22, 31, 0.16), 0 2px 6px rgba(20, 22, 31, 0.08);
+    --shadow-raised: 0 1px 3px rgba(20, 22, 31, 0.1);
+  }
+}
+
+/* The in-app theme toggle stamps data-theme on the root; it must beat the
+ * media query in both directions, so both are spelled out explicitly. */
+:root[data-theme="dark"] {
+  --color-canvas: var(--night-900);
+  --color-surface: var(--night-800);
+  --color-surface-raised: var(--night-700);
+  --color-surface-hover: var(--night-600);
+  --color-ink: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-border: #232739;
+  --color-border-strong: #333853;
+  --color-accent: var(--amber-500);
+  --color-accent-ink: var(--amber-400);
+  --color-accent-soft: rgba(245, 165, 36, 0.14);
+  --corona-gradient: linear-gradient(135deg, var(--amber-400), var(--amber-600));
+  --color-danger: #F2666A;
+  --color-success: #5FD08A;
+  --shadow-popup: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-raised: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme="light"] {
+  --color-canvas: var(--day-200);
+  --color-surface: var(--day-50);
+  --color-surface-raised: var(--day-50);
+  --color-surface-hover: var(--day-100);
+  --color-ink: var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-border: var(--day-300);
+  --color-border-strong: var(--day-400);
+  --color-accent: var(--amber-600);
+  --color-accent-ink: var(--amber-700);
+  --color-accent-soft: rgba(201, 122, 16, 0.12);
+  --corona-gradient: linear-gradient(135deg, var(--amber-500), var(--amber-700));
+  --color-danger: #C0323A;
+  --color-success: #1F7A4C;
+  --shadow-popup: 0 16px 40px rgba(20, 22, 31, 0.16), 0 2px 6px rgba(20, 22, 31, 0.08);
+  --shadow-raised: 0 1px 3px rgba(20, 22, 31, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}
