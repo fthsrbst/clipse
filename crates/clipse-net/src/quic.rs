@@ -48,8 +48,10 @@ const PAIRING_ALPN: &[u8] = b"clipse-pair/1";
 
 /// What arrived on the listening endpoint.
 pub enum Inbound {
-    /// A paired peer completing a Noise handshake.
-    Session(PeerLink),
+    /// A paired peer completing a Noise handshake. Boxed because a live
+    /// session is an order of magnitude bigger than a pairing exchange, and
+    /// every accept would otherwise pay for the larger one.
+    Session(Box<PeerLink>),
     /// Someone who scanned our QR code. Unauthenticated by definition; the
     /// six-digit code the user compares is what makes it safe.
     Pairing(PairingExchange),
@@ -270,7 +272,7 @@ impl QuicTransport {
     /// not offering pairing right now.
     pub async fn accept_session(&self) -> Option<Result<PeerLink, LinkError>> {
         match self.accept().await? {
-            Ok(Inbound::Session(link)) => Some(Ok(link)),
+            Ok(Inbound::Session(link)) => Some(Ok(*link)),
             Ok(Inbound::Pairing(exchange)) => {
                 exchange.reject();
                 Some(Err(LinkError::Transport(
@@ -329,7 +331,7 @@ impl QuicTransport {
 
         // Inbound links are LAN by definition of how they arrived; the label
         // is refined later if discovery says otherwise.
-        Ok(Inbound::Session(PeerLink {
+        Ok(Inbound::Session(Box::new(PeerLink {
             info: LinkInfo {
                 device: session.remote_device_id(),
                 addr,
@@ -340,7 +342,7 @@ impl QuicTransport {
             recv,
             session,
             decoder: Decoder::new(),
-        }))
+        })))
     }
 
     /// Run the initiator-facing half of a pairing ceremony: send our
