@@ -115,7 +115,7 @@ async fn two_paired_devices_handshake_and_exchange_messages() {
         let bob_transport = Arc::clone(&bob_transport);
         async move {
             let mut link = bob_transport
-                .accept()
+                .accept_session()
                 .await
                 .expect("endpoint closed")
                 .expect("accept");
@@ -200,7 +200,12 @@ async fn a_stranger_that_reaches_us_is_rejected_at_the_noise_layer() {
 
     let server = tokio::spawn({
         let bob_transport = Arc::clone(&bob_transport);
-        async move { bob_transport.accept().await.expect("endpoint closed") }
+        async move {
+            bob_transport
+                .accept_session()
+                .await
+                .expect("endpoint closed")
+        }
     });
 
     let dial = stranger_transport
@@ -226,7 +231,7 @@ async fn dialling_falls_through_a_dead_address_to_a_live_one() {
 
     let server = tokio::spawn({
         let bob_transport = Arc::clone(&bob_transport);
-        async move { bob_transport.accept().await }
+        async move { bob_transport.accept_session().await }
     });
 
     // A LAN candidate nothing is listening on, and the real endpoint labelled
@@ -306,7 +311,7 @@ async fn a_blob_travels_on_its_own_stream_while_control_messages_keep_flowing() 
     let server = tokio::spawn({
         let bob_transport = Arc::clone(&bob_transport);
         async move {
-            let mut link = bob_transport.accept().await.unwrap().unwrap();
+            let mut link = bob_transport.accept_session().await.unwrap().unwrap();
             // A control message first, then the blob, then another control
             // message — proving the main stream is not blocked behind it.
             let before = link.recv().await.unwrap();
@@ -344,4 +349,100 @@ async fn a_blob_travels_on_its_own_stream_while_control_messages_keep_flowing() 
     assert_eq!(got_after, after);
 
     link.close("done");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
+    use clipse_crypto::{
+        CandidateAddress, PairingAccept, PairingConfirm, PairingInitiator, PairingResponder,
+    };
+    use clipse_net::Inbound;
+
+    // Neither device has heard of the other. This is first contact.
+    let alice = Device::new();
+    let bob = Device::new();
+    let alice_transport = Arc::new(alice.transport());
+    let bob_transport = Arc::new(bob.transport());
+    let alice_addr = alice_transport.local_addr();
+
+    // Alice shows a QR code.
+    let initiator = PairingInitiator::create(
+        &alice.identity,
+        "alice".into(),
+        Platform::Windows,
+        vec![CandidateAddress::Lan(alice_addr)],
+        0,
+    );
+    let uri = initiator.to_uri();
+
+    // Alice waits for whoever scans it.
+    let alice_side = tokio::spawn({
+        let alice_transport = Arc::clone(&alice_transport);
+        async move {
+            let inbound = alice_transport.accept().await.unwrap().unwrap();
+            let Inbound::Pairing(exchange) = inbound else {
+                panic!("a pairing attempt must not arrive as a session");
+            };
+
+            let accept = PairingAccept::from_bytes(exchange.accept_bytes()).unwrap();
+            let (confirm, sas, paired_bob) = initiator.accept(&accept, 0).unwrap();
+            exchange.confirm(&confirm.to_bytes()).await.unwrap();
+            (sas, paired_bob)
+        }
+    });
+
+    // Bob scans it and answers over the address the QR carried.
+    let (responder, accept) = PairingResponder::from_offer(
+        &uri,
+        &bob.identity,
+        "bob".into(),
+        Platform::Linux,
+        vec![CandidateAddress::Lan(bob_transport.local_addr())],
+        0,
+    )
+    .unwrap();
+
+    let confirm_bytes = bob_transport
+        .send_pairing_accept(alice_addr, &accept.to_bytes())
+        .await
+        .expect("pairing exchange should complete");
+
+    let confirm = PairingConfirm::from_bytes(&confirm_bytes).unwrap();
+    let (sas_bob, paired_alice) = responder.verify(&confirm, 0).unwrap();
+    let (sas_alice, paired_bob) = alice_side.await.unwrap();
+
+    // The user compares these two screens. They must match, or pairing is off.
+    assert_eq!(
+        sas_alice, sas_bob,
+        "the six digits must agree or the user would refuse"
+    );
+    assert_eq!(paired_bob.device_id, bob.id());
+    assert_eq!(paired_alice.device_id, alice.id());
+
+    // The user confirms on both devices, which is what commits the trust.
+    alice.trust.write().unwrap().add_peer(paired_bob);
+    bob.trust.write().unwrap().add_peer(paired_alice);
+
+    // And now — the point of all of it — they can hold a sync session.
+    let server = tokio::spawn({
+        let alice_transport = Arc::clone(&alice_transport);
+        async move {
+            let mut link = alice_transport.accept_session().await.unwrap().unwrap();
+            let first = link.recv().await.unwrap();
+            link.send(&first).await.unwrap();
+            link
+        }
+    });
+
+    let mut link = bob_transport
+        .dial(alice.id(), &candidates(alice_addr))
+        .await
+        .expect("devices that just paired must be able to connect");
+
+    let hello = hello(bob.id());
+    link.send(&hello).await.unwrap();
+    assert_eq!(link.recv().await.unwrap(), hello);
+
+    link.close("done");
+    let _ = server.await;
 }

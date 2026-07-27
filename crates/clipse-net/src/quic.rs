@@ -32,9 +32,67 @@ use crate::candidate::{CandidateList, Reachability};
 use crate::framing::{self, Decoder};
 use crate::transport::{AttemptFailure, DialError, LinkError, LinkInfo};
 
-/// ALPN identifier. Bumping this is another way a protocol change can be made
-/// visible, alongside `clipse_core::PROTOCOL_VERSION`.
+/// ALPN identifier for an authenticated sync session. Bumping this is another
+/// way a protocol change can be made visible, alongside
+/// `clipse_core::PROTOCOL_VERSION`.
 const ALPN: &[u8] = b"clipse/1";
+
+/// ALPN for the pairing ceremony.
+///
+/// Pairing is the one exchange that cannot be authenticated — it is what
+/// *creates* the authentication — so it must not arrive on the same path as a
+/// session and be mistaken for one. A separate ALPN makes the accept loop
+/// branch on what the connection is *for* before it reads a byte, rather than
+/// inferring it from the first message.
+const PAIRING_ALPN: &[u8] = b"clipse-pair/1";
+
+/// What arrived on the listening endpoint.
+pub enum Inbound {
+    /// A paired peer completing a Noise handshake.
+    Session(PeerLink),
+    /// Someone who scanned our QR code. Unauthenticated by definition; the
+    /// six-digit code the user compares is what makes it safe.
+    Pairing(PairingExchange),
+}
+
+/// The responder's side of one pairing ceremony, mid-flight.
+pub struct PairingExchange {
+    send: SendStream,
+    /// Held only so the stream stays open until `confirm` has flushed;
+    /// nothing further is read from it.
+    _recv: RecvStream,
+    connection: Connection,
+    accept_bytes: Vec<u8>,
+}
+
+impl PairingExchange {
+    /// The `PairingAccept` the far side sent. Feed it to
+    /// `PairingInitiator::accept`.
+    pub fn accept_bytes(&self) -> &[u8] {
+        &self.accept_bytes
+    }
+
+    pub fn remote_addr(&self) -> SocketAddr {
+        self.connection.remote_address()
+    }
+
+    /// Send the `PairingConfirm` back and finish.
+    pub async fn confirm(mut self, confirm_bytes: &[u8]) -> Result<(), LinkError> {
+        write_frame(&mut self.send, confirm_bytes).await?;
+        // Give QUIC a moment to flush before the connection drops; a pairing
+        // ceremony that loses its last message leaves the two devices
+        // disagreeing about whether they are paired.
+        let _ = self.send.finish();
+        self.connection.closed().await;
+        Ok(())
+    }
+
+    /// Refuse, without saying why. A stranger probing for a pairing window
+    /// learns nothing from the difference between "expired" and "rejected".
+    pub fn reject(self) {
+        self.connection.close(0u32.into(), b"pairing refused");
+    }
+}
 
 /// How long to wait for one candidate address before moving to the next.
 /// Short: the whole point of the ordered list is to fail over quickly.
@@ -64,6 +122,8 @@ pub struct QuicTransport {
     endpoint: Endpoint,
     identity: Arc<DeviceIdentity>,
     trust: Arc<RwLock<Trust>>,
+    /// Requests the pairing ALPN rather than the session one.
+    pairing_client: quinn::ClientConfig,
 }
 
 impl QuicTransport {
@@ -79,12 +139,14 @@ impl QuicTransport {
         let (certificate, key) = self_signed_certificate()?;
         let server = server_config(certificate, key)?;
         let mut endpoint = Endpoint::server(server, addr).map_err(QuicError::Bind)?;
-        endpoint.set_default_client_config(client_config()?);
+        endpoint.set_default_client_config(client_config(ALPN)?);
+        let pairing_client = client_config(PAIRING_ALPN)?;
 
         Ok(Self {
             endpoint,
             identity,
             trust,
+            pairing_client,
         })
     }
 
@@ -197,17 +259,58 @@ impl QuicTransport {
         })
     }
 
-    /// Accept the next inbound peer. `None` once the endpoint is closed.
-    pub async fn accept(&self) -> Option<Result<PeerLink, LinkError>> {
+    /// Accept the next inbound connection, whatever it is for. `None` once the
+    /// endpoint is closed.
+    pub async fn accept(&self) -> Option<Result<Inbound, LinkError>> {
         let incoming = self.endpoint.accept().await?;
         Some(self.accept_one(incoming).await)
     }
 
-    async fn accept_one(&self, incoming: quinn::Incoming) -> Result<PeerLink, LinkError> {
+    /// Accept, insisting on a sync session. Convenience for callers that are
+    /// not offering pairing right now.
+    pub async fn accept_session(&self) -> Option<Result<PeerLink, LinkError>> {
+        match self.accept().await? {
+            Ok(Inbound::Session(link)) => Some(Ok(link)),
+            Ok(Inbound::Pairing(exchange)) => {
+                exchange.reject();
+                Some(Err(LinkError::Transport(
+                    "a pairing attempt arrived while none was open".into(),
+                )))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+
+    async fn accept_one(&self, incoming: quinn::Incoming) -> Result<Inbound, LinkError> {
         let connection = incoming
             .await
             .map_err(|e| LinkError::Transport(e.to_string()))?;
         let addr = connection.remote_address();
+
+        // Which ALPN the peer negotiated says what this connection is for,
+        // before any of its bytes are trusted.
+        let is_pairing = connection
+            .handshake_data()
+            .and_then(|data| {
+                data.downcast::<quinn::crypto::rustls::HandshakeData>()
+                    .ok()
+                    .and_then(|d| d.protocol)
+            })
+            .is_some_and(|protocol| protocol == PAIRING_ALPN);
+
+        if is_pairing {
+            let (send, mut recv) = connection
+                .accept_bi()
+                .await
+                .map_err(|e| LinkError::Transport(e.to_string()))?;
+            let accept_bytes = read_frame(&mut recv).await?;
+            return Ok(Inbound::Pairing(PairingExchange {
+                send,
+                _recv: recv,
+                connection,
+                accept_bytes,
+            }));
+        }
 
         let (mut send, mut recv) = connection
             .accept_bi()
@@ -226,7 +329,7 @@ impl QuicTransport {
 
         // Inbound links are LAN by definition of how they arrived; the label
         // is refined later if discovery says otherwise.
-        Ok(PeerLink {
+        Ok(Inbound::Session(PeerLink {
             info: LinkInfo {
                 device: session.remote_device_id(),
                 addr,
@@ -237,7 +340,40 @@ impl QuicTransport {
             recv,
             session,
             decoder: Decoder::new(),
-        })
+        }))
+    }
+
+    /// Run the initiator-facing half of a pairing ceremony: send our
+    /// `PairingAccept` to the address from the QR code and wait for the
+    /// `PairingConfirm`.
+    ///
+    /// Unauthenticated on purpose — this is the exchange that establishes
+    /// authentication. What makes it safe is the six digits the user compares
+    /// afterwards, not anything on this connection.
+    pub async fn send_pairing_accept(
+        &self,
+        addr: SocketAddr,
+        accept_bytes: &[u8],
+    ) -> Result<Vec<u8>, LinkError> {
+        let connection = tokio::time::timeout(
+            DIAL_TIMEOUT,
+            self.endpoint
+                .connect_with(self.pairing_client.clone(), addr, "clipse")
+                .map_err(|e| LinkError::Transport(e.to_string()))?,
+        )
+        .await
+        .map_err(|_| LinkError::Transport("pairing dial timed out".into()))?
+        .map_err(|e| LinkError::Transport(e.to_string()))?;
+
+        let (mut send, mut recv) = connection
+            .open_bi()
+            .await
+            .map_err(|e| LinkError::Transport(e.to_string()))?;
+
+        write_frame(&mut send, accept_bytes).await?;
+        let confirm = read_frame(&mut recv).await?;
+        connection.close(0u32.into(), b"paired");
+        Ok(confirm)
     }
 
     /// Stop accepting and let in-flight connections drain.
@@ -436,19 +572,19 @@ fn server_config(
         .with_no_client_auth()
         .with_single_cert(vec![certificate], key.into())
         .map_err(|e| QuicError::Tls(e.to_string()))?;
-    tls.alpn_protocols = vec![ALPN.to_vec()];
+    tls.alpn_protocols = vec![ALPN.to_vec(), PAIRING_ALPN.to_vec()];
 
     let quic = quinn::crypto::rustls::QuicServerConfig::try_from(tls)
         .map_err(|e| QuicError::Tls(e.to_string()))?;
     Ok(quinn::ServerConfig::with_crypto(Arc::new(quic)))
 }
 
-fn client_config() -> Result<quinn::ClientConfig, QuicError> {
+fn client_config(alpn: &[u8]) -> Result<quinn::ClientConfig, QuicError> {
     let mut tls = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(AcceptAnyServerCert))
         .with_no_client_auth();
-    tls.alpn_protocols = vec![ALPN.to_vec()];
+    tls.alpn_protocols = vec![alpn.to_vec()];
 
     let quic = quinn::crypto::rustls::QuicClientConfig::try_from(tls)
         .map_err(|e| QuicError::Tls(e.to_string()))?;
