@@ -1,0 +1,19 @@
+# Normalise line endings so the three-platform CI matrix does not see phantom
+# diffs and rustfmt/prettier agree across machines.
+* text=auto eol=lf
+
+*.rs      text eol=lf
+*.toml    text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+*.yml     text eol=lf
+*.svg     text eol=lf
+*.css     text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+
+*.png     binary
+*.jpg     binary
+*.ico     binary
+*.icns    binary
+*.pdf     binary
