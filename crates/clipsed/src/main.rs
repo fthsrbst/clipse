@@ -10,6 +10,7 @@ mod daemon;
 mod identity;
 mod ipc_server;
 mod paste;
+mod peers;
 mod sync;
 
 use std::path::PathBuf;
@@ -60,11 +61,14 @@ async fn main() -> anyhow::Result<()> {
     // Loaded at startup rather than lazily: if the key file is corrupt or
     // belongs to another device, the user needs to know now, not the first
     // time they try to pair.
-    let identity = identity::Identity::load_or_create(&paths, config.device)?;
+    let identity::Identity {
+        identity: device_key,
+        trust: device_trust,
+    } = identity::Identity::load_or_create(&paths, config.device)?;
     info!(
         device = %config.device.short(),
-        fingerprint = %identity.identity.fingerprint(),
-        peers = identity.trust.peers().count(),
+        fingerprint = %device_key.fingerprint(),
+        peers = device_trust.peers().count(),
         root = %paths.root().display(),
         "starting clipsed"
     );
@@ -95,12 +99,16 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let clock = Arc::new(HlcClock::new(config.device));
+    let sync_enabled = config.settings.sync_enabled;
+    let device_label = config.settings.device_label.clone();
+    let loop_guard = Arc::new(std::sync::Mutex::new(clipse_sync::LoopGuard::default()));
+
     let daemon = Arc::new(daemon::Daemon::new(
         paths,
         config,
-        store,
+        Arc::clone(&store),
         Arc::new(watcher),
-        clock,
+        Arc::clone(&clock),
     ));
 
     let server = ipc_server::IpcServer::new(Arc::clone(&daemon));
@@ -109,13 +117,59 @@ async fn main() -> anyhow::Result<()> {
     let capturing = tokio::spawn(capture::run(Arc::clone(&daemon), captures));
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let serving = tokio::spawn(server.serve(listener, shutdown_rx));
+    let serving = tokio::spawn(server.serve(listener, shutdown_rx.clone()));
+
+    // Peer sync. Bound on any interface so a peer on the LAN can reach us;
+    // port 0 because the port is advertised, not fixed.
+    let peer_loops = if sync_enabled {
+        let device_key = Arc::new(device_key);
+        let trust = Arc::new(std::sync::RwLock::new(device_trust));
+        match clipse_net::QuicTransport::bind(
+            "0.0.0.0:0"
+                .parse()
+                .expect("a literal address always parses"),
+            Arc::clone(&device_key),
+            Arc::clone(&trust),
+        ) {
+            Ok(transport) => {
+                let transport = Arc::new(transport);
+                info!(addr = %transport.local_addr(), "quic listening");
+                let ctx = Arc::new(sync::SyncContext {
+                    store,
+                    clock,
+                    loop_guard,
+                    label: device_label,
+                    platform: std::env::consts::OS.to_string(),
+                });
+                let manager = peers::PeerManager::new(transport, ctx, trust);
+                daemon.set_peers(Arc::clone(&manager));
+                Some((
+                    tokio::spawn(Arc::clone(&manager).accept_loop(shutdown_rx.clone())),
+                    tokio::spawn(manager.dial_loop(shutdown_rx)),
+                ))
+            }
+            Err(e) => {
+                // Not fatal: the local half of the product still works, and
+                // the UI will show sync as unavailable rather than the daemon
+                // refusing to start.
+                warn!(error = %e, "could not start peer sync; running local-only");
+                None
+            }
+        }
+    } else {
+        info!("sync is disabled in settings; running local-only");
+        None
+    };
 
     wait_for_shutdown_signal().await;
     info!("shutting down");
     let _ = shutdown_tx.send(true);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), serving).await;
     capturing.abort();
+    if let Some((accepting, dialling)) = peer_loops {
+        accepting.abort();
+        dialling.abort();
+    }
 
     daemon.persist()?;
     Ok(())

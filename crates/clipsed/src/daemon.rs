@@ -31,6 +31,9 @@ pub struct Daemon {
     /// Set once, immediately after the IPC server is built. `OnceLock` rather
     /// than a constructor argument because the server needs the daemon first.
     events: OnceLock<broadcast::Sender<Event>>,
+    /// Absent when sync is disabled or the QUIC endpoint could not bind, in
+    /// which case the status simply reports no peers rather than lying.
+    peers: OnceLock<Arc<crate::peers::PeerManager>>,
 }
 
 struct State {
@@ -56,7 +59,12 @@ impl Daemon {
                 paused: false,
             }),
             events: OnceLock::new(),
+            peers: OnceLock::new(),
         }
+    }
+
+    pub fn set_peers(&self, peers: Arc<crate::peers::PeerManager>) {
+        let _ = self.peers.set(peers);
     }
 
     pub fn set_event_sink(&self, sink: broadcast::Sender<Event>) {
@@ -147,6 +155,11 @@ impl Daemon {
         // a write, so it is not worth caching and risking a stale readout.
         let clip_count = self.store.clip_count().unwrap_or(0);
         let blob_bytes = self.store.blob_bytes().unwrap_or(0);
+        let (online, total) = self
+            .peers
+            .get()
+            .map(|peers| peers.counts())
+            .unwrap_or((0, 0));
 
         DaemonStatus {
             device,
@@ -162,9 +175,8 @@ impl Daemon {
             clip_count,
             blob_bytes,
             blob_quota_bytes: quota,
-            // Populated in F2.
-            peers_online: 0,
-            peers_total: 0,
+            peers_online: online,
+            peers_total: total,
         }
     }
 

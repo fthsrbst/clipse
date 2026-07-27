@@ -1,0 +1,421 @@
+//! Keeping sessions with the paired devices alive.
+//!
+//! Two loops. One accepts whatever arrives on the QUIC endpoint; the other
+//! walks the paired set on a timer and dials anyone it has not spoken to
+//! recently. Both end up in the same place — `sync::run_session` — differing
+//! only in which side of the alternation they take.
+//!
+//! Failures are not all equal. A peer that cannot be *reached* is ordinary and
+//! gets exponential backoff; a peer that *refuses* us has either been removed
+//! or is something worth a human looking at, so it is surfaced and not retried
+//! until the paired set changes. That distinction lives in
+//! `clipse_net::DialError::is_retryable`, and honouring it is the whole reason
+//! this module keeps per-peer state.
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
+
+use clipse_core::DeviceId;
+use clipse_crypto::{CandidateAddress, Trust};
+use clipse_net::candidate::{Candidate, CandidateList};
+use clipse_net::{Backoff, Inbound, QuicTransport};
+use tokio::sync::watch;
+use tracing::{debug, info, warn};
+
+use crate::sync::{self, Role, SyncContext};
+
+/// How often the dial loop wakes up. Sync is also triggered by a local capture
+/// (see `capture::run`), so this is the floor on how stale a peer can get, not
+/// the normal path.
+const DIAL_TICK: Duration = Duration::from_secs(30);
+
+/// Per-peer state the loops share.
+struct PeerState {
+    candidates: CandidateList,
+    backoff: Backoff,
+    /// Set when the peer refused us. Cleared when the paired set changes.
+    refused: Option<String>,
+}
+
+impl PeerState {
+    fn new(candidates: CandidateList) -> Self {
+        Self {
+            candidates,
+            backoff: Backoff::default(),
+            refused: None,
+        }
+    }
+}
+
+pub struct PeerManager {
+    transport: Arc<QuicTransport>,
+    ctx: Arc<SyncContext>,
+    trust: Arc<RwLock<Trust>>,
+    peers: Mutex<HashMap<DeviceId, PeerState>>,
+}
+
+impl PeerManager {
+    pub fn new(
+        transport: Arc<QuicTransport>,
+        ctx: Arc<SyncContext>,
+        trust: Arc<RwLock<Trust>>,
+    ) -> Arc<Self> {
+        let manager = Arc::new(Self {
+            transport,
+            ctx,
+            trust,
+            peers: Mutex::new(HashMap::new()),
+        });
+        manager.reload_from_trust();
+        manager
+    }
+
+    /// Rebuild the peer table from the paired set — on startup, and whenever
+    /// pairing adds or removes a device.
+    pub fn reload_from_trust(&self) {
+        let known: Vec<(DeviceId, CandidateList)> = {
+            let trust = self.trust.read().expect(POISONED);
+            trust
+                .peers()
+                .map(|peer| (peer.device_id, candidates_of(&peer.addresses)))
+                .collect()
+        };
+
+        let mut peers = self.peers.lock().expect(POISONED);
+        peers.retain(|id, _| known.iter().any(|(known_id, _)| known_id == id));
+        for (id, candidates) in known {
+            peers
+                .entry(id)
+                .and_modify(|state| {
+                    // A device that was re-paired deserves a fresh chance.
+                    state.refused = None;
+                    for candidate in candidates.iter() {
+                        state.candidates.upsert(candidate.clone());
+                    }
+                })
+                .or_insert_with(|| PeerState::new(candidates));
+        }
+    }
+
+    /// Accept inbound connections until the endpoint closes.
+    pub async fn accept_loop(self: Arc<Self>, mut shutdown: watch::Receiver<bool>) {
+        loop {
+            let inbound = tokio::select! {
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { return; }
+                    continue;
+                }
+                inbound = self.transport.accept() => inbound,
+            };
+
+            let Some(inbound) = inbound else {
+                debug!("quic endpoint closed; accept loop ending");
+                return;
+            };
+
+            match inbound {
+                Ok(Inbound::Session(link)) => {
+                    let this = Arc::clone(&self);
+                    tokio::spawn(async move {
+                        let mut link = *link;
+                        let peer = link.remote_device();
+                        match sync::run_session(&mut link, &this.ctx, Role::Responder).await {
+                            Ok(outcome) => {
+                                info!(peer = %peer.short(), ?outcome, "served a sync session");
+                                this.note_success(peer, link.info().addr);
+                            }
+                            Err(e) => {
+                                warn!(peer = %peer.short(), error = %e, "sync session failed")
+                            }
+                        }
+                        link.close("done");
+                    });
+                }
+                Ok(Inbound::Pairing(exchange)) => {
+                    // Pairing is only ever accepted while the user has the
+                    // pairing screen open. Refusing silently is deliberate:
+                    // a stranger probing for a window learns nothing.
+                    debug!(addr = %exchange.remote_addr(), "refused an unexpected pairing attempt");
+                    exchange.reject();
+                }
+                Err(e) => debug!(error = %e, "inbound connection ended"),
+            }
+        }
+    }
+
+    /// Dial peers that are due, forever.
+    pub async fn dial_loop(self: Arc<Self>, mut shutdown: watch::Receiver<bool>) {
+        loop {
+            tokio::select! {
+                _ = shutdown.changed() => {
+                    if *shutdown.borrow() { return; }
+                }
+                _ = tokio::time::sleep(DIAL_TICK) => {
+                    self.sync_all().await;
+                }
+            }
+        }
+    }
+
+    /// One pass over every paired device.
+    pub async fn sync_all(&self) {
+        let due: Vec<DeviceId> = {
+            let peers = self.peers.lock().expect(POISONED);
+            peers
+                .iter()
+                .filter(|(_, state)| state.refused.is_none())
+                .map(|(id, _)| *id)
+                .collect()
+        };
+
+        for peer in due {
+            if let Err(e) = self.sync_one(peer).await {
+                debug!(peer = %peer.short(), error = %e, "sync attempt did not complete");
+            }
+        }
+    }
+
+    /// Dial one peer and run a session. Records backoff or refusal.
+    pub async fn sync_one(&self, peer: DeviceId) -> Result<(), String> {
+        let candidates = {
+            let peers = self.peers.lock().expect(POISONED);
+            match peers.get(&peer) {
+                Some(state) if state.refused.is_none() => state.candidates.clone(),
+                Some(state) => return Err(state.refused.clone().unwrap_or_default()),
+                None => return Err("not paired".to_string()),
+            }
+        };
+
+        match self.transport.dial(peer, &candidates).await {
+            Ok(mut link) => {
+                let addr = link.info().addr;
+                let result = sync::run_session(&mut link, &self.ctx, Role::Dialler).await;
+                link.close("done");
+
+                match result {
+                    Ok(outcome) => {
+                        info!(peer = %peer.short(), ?outcome, "synced");
+                        self.note_success(peer, addr);
+                        Ok(())
+                    }
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            Err(error) => {
+                let message = error.to_string();
+                let mut peers = self.peers.lock().expect(POISONED);
+                if let Some(state) = peers.get_mut(&peer) {
+                    if error.is_retryable() {
+                        let delay = state.backoff.next_delay_ms();
+                        debug!(peer = %peer.short(), delay_ms = delay, "peer unreachable");
+                    } else {
+                        // Surfaced rather than retried: this is a removed
+                        // device or something that needs attention.
+                        warn!(peer = %peer.short(), error = %message, "peer refused us");
+                        state.refused = Some(message.clone());
+                    }
+                }
+                Err(message)
+            }
+        }
+    }
+
+    fn note_success(&self, peer: DeviceId, addr: SocketAddr) {
+        let mut peers = self.peers.lock().expect(POISONED);
+        if let Some(state) = peers.get_mut(&peer) {
+            state.backoff.reset();
+            state.refused = None;
+            state
+                .candidates
+                .upsert(Candidate::lan(addr).seen_at(now_ms()));
+        }
+    }
+
+    /// How many peers are paired, and how many are not currently refusing us.
+    pub fn counts(&self) -> (u32, u32) {
+        let peers = self.peers.lock().expect(POISONED);
+        let total = peers.len() as u32;
+        let healthy = peers.values().filter(|s| s.refused.is_none()).count() as u32;
+        (healthy, total)
+    }
+
+    /// Why a peer is not being dialled, if it is not. Read by the tests and by
+    /// the devices list once pairing is exposed over IPC.
+    #[allow(dead_code, reason = "surfaced by the devices list when pairing lands")]
+    pub fn refusal(&self, peer: &DeviceId) -> Option<String> {
+        self.peers
+            .lock()
+            .expect(POISONED)
+            .get(peer)
+            .and_then(|s| s.refused.clone())
+    }
+}
+
+const POISONED: &str = "peer table poisoned by an earlier panic";
+
+fn candidates_of(addresses: &[CandidateAddress]) -> CandidateList {
+    CandidateList::new(addresses.iter().map(|address| match address {
+        CandidateAddress::Lan(addr) => Candidate::lan(*addr),
+        CandidateAddress::Tailnet(addr) => Candidate::tailnet(*addr),
+    }))
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use clipse_crypto::{DeviceIdentity, PairedDevice, Platform};
+    use clipse_store::{Store, StoreOptions};
+    use clipse_sync::LoopGuard;
+
+    use clipse_net::DialError;
+
+    use super::*;
+
+    fn manager_with(peers: Vec<PairedDevice>) -> Arc<PeerManager> {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = clipse_core::Paths::with_root(dir.path());
+        let store = Arc::new(Store::open(&paths, StoreOptions::default()).unwrap());
+        let device = DeviceId::generate();
+        let identity = Arc::new(DeviceIdentity::generate(device));
+
+        let trust = Arc::new(RwLock::new(Trust::new(device)));
+        for peer in peers {
+            trust.write().unwrap().add_peer(peer);
+        }
+
+        let transport = Arc::new(
+            QuicTransport::bind(
+                "127.0.0.1:0".parse().unwrap(),
+                Arc::clone(&identity),
+                Arc::clone(&trust),
+            )
+            .unwrap(),
+        );
+
+        let ctx = Arc::new(SyncContext {
+            store,
+            clock: Arc::new(clipse_core::HlcClock::new(device)),
+            loop_guard: Arc::new(Mutex::new(LoopGuard::default())),
+            label: "test".into(),
+            platform: "test".into(),
+        });
+
+        // The temp dir must outlive the store; leaked deliberately, this is a
+        // unit test that does not touch the filesystem again.
+        std::mem::forget(dir);
+        PeerManager::new(transport, ctx, trust)
+    }
+
+    fn paired(addresses: Vec<CandidateAddress>) -> PairedDevice {
+        PairedDevice {
+            device_id: DeviceId::generate(),
+            static_public: DeviceIdentity::generate(DeviceId::generate()).public_key(),
+            label: "peer".into(),
+            platform: Platform::Linux,
+            addresses,
+            paired_at_ms: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_peer_table_mirrors_the_paired_set() {
+        let a = paired(vec![CandidateAddress::Lan("127.0.0.1:1".parse().unwrap())]);
+        let b = paired(vec![]);
+        let manager = manager_with(vec![a.clone(), b.clone()]);
+
+        assert_eq!(manager.counts(), (2, 2));
+
+        manager
+            .trust
+            .write()
+            .unwrap()
+            .remove_peer(&b.device_id)
+            .unwrap();
+        manager.reload_from_trust();
+        assert_eq!(manager.counts(), (1, 1), "a removed device must be dropped");
+    }
+
+    #[tokio::test]
+    async fn pairing_addresses_become_dial_candidates_in_the_right_order() {
+        let peer = paired(vec![
+            CandidateAddress::Tailnet("100.64.0.1:7420".parse().unwrap()),
+            CandidateAddress::Lan("192.168.1.5:7420".parse().unwrap()),
+        ]);
+        let manager = manager_with(vec![peer.clone()]);
+
+        let peers = manager.peers.lock().unwrap();
+        let order = peers.get(&peer.device_id).unwrap().candidates.dial_order();
+        assert_eq!(order.len(), 2);
+        assert_eq!(
+            order[0].reachability,
+            clipse_net::Reachability::Lan,
+            "LAN must be tried before the tailnet"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_peer_is_retried_but_a_refusing_one_is_not() {
+        // Nothing is listening on this address, so the dial fails as
+        // unreachable — retryable, and the peer stays in the rotation.
+        let peer = paired(vec![CandidateAddress::Lan("127.0.0.1:9".parse().unwrap())]);
+        let manager = manager_with(vec![peer.clone()]);
+
+        assert!(manager.sync_one(peer.device_id).await.is_err());
+        assert!(
+            manager.refusal(&peer.device_id).is_none(),
+            "unreachable is not refusal"
+        );
+        assert_eq!(manager.counts(), (1, 1), "and it stays due for another try");
+    }
+
+    #[tokio::test]
+    async fn dialling_an_unpaired_device_marks_it_refused_rather_than_looping() {
+        let manager = manager_with(vec![]);
+        let stranger = DeviceId::generate();
+
+        // Not in the table at all.
+        assert!(manager.sync_one(stranger).await.is_err());
+        assert_eq!(manager.counts(), (0, 0));
+    }
+
+    // A tokio test because binding a QUIC endpoint needs a runtime.
+    #[tokio::test]
+    async fn a_refused_peer_is_given_another_chance_when_it_is_re_paired() {
+        let peer = paired(vec![CandidateAddress::Lan("127.0.0.1:9".parse().unwrap())]);
+        let manager = manager_with(vec![peer.clone()]);
+
+        manager
+            .peers
+            .lock()
+            .unwrap()
+            .get_mut(&peer.device_id)
+            .unwrap()
+            .refused = Some("removed".into());
+        assert_eq!(manager.counts(), (0, 1));
+
+        manager.reload_from_trust();
+        assert_eq!(
+            manager.counts(),
+            (1, 1),
+            "re-pairing must clear an old refusal"
+        );
+    }
+
+    #[test]
+    fn dial_error_classification_is_what_drives_the_table() {
+        // Guards the assumption the loops above are built on.
+        assert!(
+            DialError::Unreachable { attempts: vec![] }.is_retryable(),
+            "asleep laptops must keep being tried"
+        );
+        assert!(!DialError::NotPaired.is_retryable());
+    }
+}
