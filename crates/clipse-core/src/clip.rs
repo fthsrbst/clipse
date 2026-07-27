@@ -141,13 +141,23 @@ impl Payload {
         } else {
             PayloadBody::Blob
         };
-        Self { format, digest, size, body }
+        Self {
+            format,
+            digest,
+            size,
+            body,
+        }
     }
 
     /// A payload whose bytes are known to be in (or destined for) the blob
     /// store — used when receiving an offer before the chunks arrive.
     pub fn blob(format: ClipFormat, digest: ContentHash, size: u64) -> Self {
-        Self { format, digest, size, body: PayloadBody::Blob }
+        Self {
+            format,
+            digest,
+            size,
+            body: PayloadBody::Blob,
+        }
     }
 
     pub fn inline_bytes(&self) -> Option<&[u8]> {
@@ -173,7 +183,11 @@ pub struct ClipSource {
 
 impl ClipSource {
     pub fn new(device: DeviceId, device_label: impl Into<String>) -> Self {
-        Self { device, device_label: device_label.into(), app: None }
+        Self {
+            device,
+            device_label: device_label.into(),
+            app: None,
+        }
     }
 
     pub fn with_app(mut self, app: Option<String>) -> Self {
@@ -284,7 +298,11 @@ fn build_preview(payloads: &[Payload], kind: ClipKind) -> String {
         .and_then(|b| std::str::from_utf8(b).ok())
     {
         let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-        let trimmed = if collapsed.is_empty() { text.trim() } else { &collapsed };
+        let trimmed = if collapsed.is_empty() {
+            text.trim()
+        } else {
+            &collapsed
+        };
         return trimmed.chars().take(PREVIEW_MAX_CHARS).collect();
     }
 
@@ -319,7 +337,11 @@ mod tests {
     }
 
     fn text_clip(s: &str) -> Clip {
-        Clip::new(vec![Payload::new(ClipFormat::Text, s.into())], source(), hlc())
+        Clip::new(
+            vec![Payload::new(ClipFormat::Text, s.into())],
+            source(),
+            hlc(),
+        )
     }
 
     #[test]

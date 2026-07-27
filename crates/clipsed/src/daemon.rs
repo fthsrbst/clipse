@@ -306,8 +306,9 @@ impl RequestHandler for Daemon {
             }
 
             Request::SetPinned { id, pinned } => {
+                let hlc = self.clock.now();
                 match self
-                    .with_store(move |store| store.set_pinned(id, pinned))
+                    .with_store(move |store| store.set_pinned(id, pinned, hlc))
                     .await
                 {
                     Ok(()) => {
@@ -320,14 +321,19 @@ impl RequestHandler for Daemon {
                 }
             }
 
-            Request::Delete { id } => match self.with_store(move |store| store.delete(id)).await {
-                Ok(()) => {
-                    self.emit(Event::ClipRemoved(id));
-                    self.emit_status();
-                    Response::Ok
+            Request::Delete { id } => {
+                // A fresh HLC, so the tombstone is newer than the clip it
+                // replaces and can replicate to the other devices.
+                let hlc = self.clock.now();
+                match self.with_store(move |store| store.delete(id, hlc)).await {
+                    Ok(()) => {
+                        self.emit(Event::ClipRemoved(id));
+                        self.emit_status();
+                        Response::Ok
+                    }
+                    Err(response) => response,
                 }
-                Err(response) => response,
-            },
+            }
 
             Request::SetPaused { paused } => {
                 self.state.lock().expect(POISONED).paused = paused;

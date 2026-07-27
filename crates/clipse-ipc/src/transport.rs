@@ -133,7 +133,9 @@ impl Listener {
             // A socket file left behind by a crashed daemon looks identical to
             // a live one; the only reliable test is to try talking to it.
             if tokio::net::UnixStream::connect(path).await.is_ok() {
-                return Err(TransportError::AlreadyRunning { endpoint: endpoint.to_string() });
+                return Err(TransportError::AlreadyRunning {
+                    endpoint: endpoint.to_string(),
+                });
             }
             std::fs::remove_file(path)?;
         }
@@ -142,7 +144,10 @@ impl Listener {
         }
 
         let inner = tokio::net::UnixListener::bind(path)?;
-        Ok(Self { endpoint: endpoint.to_string(), inner })
+        Ok(Self {
+            endpoint: endpoint.to_string(),
+            inner,
+        })
     }
 
     #[cfg(windows)]
@@ -157,12 +162,17 @@ impl Listener {
             .create(endpoint)
             .map_err(|e| {
                 if e.raw_os_error() == Some(231) || e.kind() == io::ErrorKind::PermissionDenied {
-                    TransportError::AlreadyRunning { endpoint: endpoint.to_string() }
+                    TransportError::AlreadyRunning {
+                        endpoint: endpoint.to_string(),
+                    }
                 } else {
                     TransportError::Io(e)
                 }
             })?;
-        Ok(Self { endpoint: endpoint.to_string(), pending })
+        Ok(Self {
+            endpoint: endpoint.to_string(),
+            pending,
+        })
     }
 
     #[cfg(unix)]
@@ -197,9 +207,9 @@ pub async fn connect(endpoint: &str) -> Result<IpcStream, TransportError> {
     {
         match tokio::net::UnixStream::connect(endpoint).await {
             Ok(s) => Ok(IpcStream(s)),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                Err(TransportError::NotRunning { endpoint: endpoint.to_string() })
-            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Err(TransportError::NotRunning {
+                endpoint: endpoint.to_string(),
+            }),
             Err(e) => Err(e.into()),
         }
     }
@@ -218,7 +228,9 @@ pub async fn connect(endpoint: &str) -> Result<IpcStream, TransportError> {
                     tokio::time::sleep(std::time::Duration::from_millis(25)).await;
                 }
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                    return Err(TransportError::NotRunning { endpoint: endpoint.to_string() });
+                    return Err(TransportError::NotRunning {
+                        endpoint: endpoint.to_string(),
+                    });
                 }
                 Err(e) => return Err(e.into()),
             }

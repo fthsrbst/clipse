@@ -20,7 +20,9 @@ impl Paths {
     /// / `~/.local/share/clipse`.
     pub fn platform_default() -> Result<Self> {
         let dirs = ProjectDirs::from("dev", "clipse", "Clipse").ok_or(Error::NoDataDirectory)?;
-        Ok(Self { root: dirs.data_dir().to_path_buf() })
+        Ok(Self {
+            root: dirs.data_dir().to_path_buf(),
+        })
     }
 
     pub fn with_root(root: impl Into<PathBuf>) -> Self {
@@ -64,7 +66,10 @@ impl Paths {
         }
         #[cfg(not(windows))]
         {
-            self.root.join("clipsed.sock").to_string_lossy().into_owned()
+            self.root
+                .join("clipsed.sock")
+                .to_string_lossy()
+                .into_owned()
         }
     }
 }

@@ -74,21 +74,34 @@ fn pinned_flag_round_trips() {
     let clip = text_clip("pin me", hlc_at(1_000, DeviceId::generate()));
     store.insert(&clip).unwrap();
 
-    store.set_pinned(clip.id, true).unwrap();
+    let pin_hlc = hlc_at(9_999, DeviceId::generate());
+    store.set_pinned(clip.id, true, pin_hlc).unwrap();
 
-    let mut expected = clip.clone();
-    expected.pinned = true;
-    assert_eq!(store.get(clip.id).unwrap().unwrap(), expected);
+    let pinned = store.get(clip.id).unwrap().unwrap();
+    assert!(pinned.pinned);
+    // The clock has to move, or the change could never replicate to another
+    // device -- every merge rule and sync cursor keys on the HLC.
+    assert_eq!(pinned.hlc, pin_hlc);
+    // Everything that is not metadata is untouched.
+    assert_eq!(pinned.payloads, clip.payloads);
+    assert_eq!(pinned.created_at_ms, clip.created_at_ms);
 
-    store.set_pinned(clip.id, false).unwrap();
-    assert_eq!(store.get(clip.id).unwrap().unwrap(), clip);
+    let unpin_hlc = hlc_at(10_000, DeviceId::generate());
+    store.set_pinned(clip.id, false, unpin_hlc).unwrap();
+    let unpinned = store.get(clip.id).unwrap().unwrap();
+    assert!(!unpinned.pinned);
+    assert_eq!(unpinned.hlc, unpin_hlc);
 }
 
 #[test]
 fn set_pinned_on_unknown_id_errors() {
     let (_dir, store) = open_store();
     let err = store
-        .set_pinned(clipse_core::ClipId::generate(), true)
+        .set_pinned(
+            clipse_core::ClipId::generate(),
+            true,
+            hlc_at(1, DeviceId::generate()),
+        )
         .unwrap_err();
     assert!(matches!(err, Error::NotFound(_)));
 }
@@ -147,7 +160,9 @@ fn dedup_does_not_disturb_pinned_state() {
     let device = DeviceId::generate();
     let first = text_clip("keep me pinned", hlc_at(1_000, device));
     store.insert(&first).unwrap();
-    store.set_pinned(first.id, true).unwrap();
+    store
+        .set_pinned(first.id, true, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
 
     let repeat = text_clip("keep me pinned", hlc_at(2_000, device));
     store.insert(&repeat).unwrap();
@@ -206,7 +221,9 @@ fn deleted_clip_stops_appearing_in_search() {
         1
     );
 
-    store.delete(clip.id).unwrap();
+    store
+        .delete(clip.id, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
     assert!(
         store
             .search("findable", HistoryQuery::default())
@@ -222,7 +239,9 @@ fn reinserted_content_leaves_no_stale_index_row() {
 
     let v1 = text_clip("version one alpha", hlc_at(1_000, device));
     store.insert(&v1).unwrap();
-    store.delete(v1.id).unwrap();
+    store
+        .delete(v1.id, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
 
     // A different clip re-using the same conceptual "slot" (e.g. an edit)
     // is, from the store's point of view, an unrelated fresh clip because
@@ -298,7 +317,9 @@ fn history_query_filters_by_kind_and_pinned() {
     );
     store.insert(&text).unwrap();
     store.insert(&image).unwrap();
-    store.set_pinned(text.id, true).unwrap();
+    store
+        .set_pinned(text.id, true, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
 
     let images = store
         .recent(HistoryQuery {
@@ -421,7 +442,9 @@ fn quota_evicts_lru_blobs_but_never_pinned_or_inline() {
 
     // Pin *after* writing its blob: despite being the least-recently-used
     // by used_seq, it must survive because it is pinned.
-    store.set_pinned(pinned_clip.id, true).unwrap();
+    store
+        .set_pinned(pinned_clip.id, true, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
 
     let report = store.enforce_blob_quota().unwrap();
     assert_eq!(
@@ -500,7 +523,9 @@ fn changes_since_includes_tombstones() {
     let b = text_clip("b", hlc_at(2_000, device));
     store.insert(&a).unwrap();
     store.insert(&b).unwrap();
-    store.delete(a.id).unwrap();
+    store
+        .delete(a.id, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
 
     let all = store.changes_since(None, 10).unwrap();
     assert_eq!(all.len(), 2, "tombstones must still replicate");
@@ -517,7 +542,9 @@ fn purge_tombstones_removes_only_sufficiently_old_ones() {
     let device = DeviceId::generate();
     let a = text_clip("purge me", hlc_at(1_000, device));
     store.insert(&a).unwrap();
-    store.delete(a.id).unwrap();
+    store
+        .delete(a.id, hlc_at(9_999, DeviceId::generate()))
+        .unwrap();
 
     // Not old enough yet (a huge age threshold means "must be ancient").
     let purged = store.purge_tombstones(u64::MAX / 2).unwrap();

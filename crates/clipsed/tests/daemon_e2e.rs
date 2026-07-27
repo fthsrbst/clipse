@@ -138,6 +138,16 @@ mod clipboard {
     /// Win32 directly rather than `Set-Clipboard`: PowerShell's cmdlet reports
     /// failures it did not have and swallows ones it did, which made this test
     /// lie in both directions.
+    /// These tests take over the machine's one clipboard, so they must not run
+    /// alongside each other — two interleaving would each see the other's
+    /// copies. Held for the whole body of every clipboard test.
+    fn clipboard_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     fn with_clipboard<T>(what: &str, f: impl Fn() -> T) -> T {
         for _ in 0..40 {
             if unsafe { OpenClipboard(None) }.is_ok() {
@@ -218,7 +228,10 @@ mod clipboard {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)] // see clipboard_test_lock
     async fn a_real_copy_reaches_the_history_and_can_be_applied_back() {
+        let _serial = clipboard_test_lock();
+
         let dir = TempDir::new().unwrap();
         let (_daemon, endpoint) = start_daemon(&dir).await;
         let mut client = connect(&endpoint).await;
@@ -271,7 +284,10 @@ mod clipboard {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)] // see clipboard_test_lock
     async fn a_detected_secret_never_reaches_the_history() {
+        let _serial = clipboard_test_lock();
+
         let dir = TempDir::new().unwrap();
         let (_daemon, endpoint) = start_daemon(&dir).await;
         let mut client = connect(&endpoint).await;
@@ -317,7 +333,10 @@ mod clipboard {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    #[allow(clippy::await_holding_lock)] // see clipboard_test_lock
     async fn history_survives_a_daemon_restart() {
+        let _serial = clipboard_test_lock();
+
         let dir = TempDir::new().unwrap();
         let marker = format!("clipse-restart-{}", std::process::id());
 

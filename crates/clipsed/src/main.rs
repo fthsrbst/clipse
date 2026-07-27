@@ -7,8 +7,10 @@
 mod capture;
 mod config;
 mod daemon;
+mod identity;
 mod ipc_server;
 mod paste;
+mod sync;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -54,7 +56,18 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("creating {}", paths.root().display()))?;
 
     let config = config::Config::load_or_create(&paths)?;
-    info!(device = %config.device.short(), root = %paths.root().display(), "starting clipsed");
+
+    // Loaded at startup rather than lazily: if the key file is corrupt or
+    // belongs to another device, the user needs to know now, not the first
+    // time they try to pair.
+    let identity = identity::Identity::load_or_create(&paths, config.device)?;
+    info!(
+        device = %config.device.short(),
+        fingerprint = %identity.identity.fingerprint(),
+        peers = identity.trust.peers().count(),
+        root = %paths.root().display(),
+        "starting clipsed"
+    );
 
     // Bound before anything expensive: if another daemon already owns this
     // data directory, stop now rather than opening its database too.

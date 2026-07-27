@@ -11,15 +11,24 @@ pub struct Frame {
 
 impl Frame {
     pub fn request(id: u64, request: Request) -> Self {
-        Self { id, body: FrameBody::Request(request) }
+        Self {
+            id,
+            body: FrameBody::Request(request),
+        }
     }
 
     pub fn response(id: u64, response: Response) -> Self {
-        Self { id, body: FrameBody::Response(response) }
+        Self {
+            id,
+            body: FrameBody::Response(response),
+        }
     }
 
     pub fn event(event: Event) -> Self {
-        Self { id: 0, body: FrameBody::Event(event) }
+        Self {
+            id: 0,
+            body: FrameBody::Event(event),
+        }
     }
 }
 
@@ -40,7 +49,10 @@ pub struct HistoryQuery {
 
 impl HistoryQuery {
     pub fn page(limit: u32) -> Self {
-        Self { limit, ..Default::default() }
+        Self {
+            limit,
+            ..Default::default()
+        }
     }
 }
 
@@ -48,24 +60,45 @@ impl HistoryQuery {
 pub enum Request {
     /// Always the first message. Lets both sides fail loudly on a version
     /// mismatch instead of misparsing each other's frames later.
-    Hello { client: String, ipc_version: u16 },
+    Hello {
+        client: String,
+        ipc_version: u16,
+    },
 
     History(HistoryQuery),
-    Search { text: String, query: HistoryQuery },
-    GetClip { id: ClipId },
+    Search {
+        text: String,
+        query: HistoryQuery,
+    },
+    GetClip {
+        id: ClipId,
+    },
 
     /// Put a stored clip back on the local clipboard.
-    Apply { id: ClipId },
+    Apply {
+        id: ClipId,
+    },
     /// Apply, then synthesise the paste keystroke into the focused window.
-    Paste { id: ClipId },
+    Paste {
+        id: ClipId,
+    },
 
-    SetPinned { id: ClipId, pinned: bool },
-    Delete { id: ClipId },
+    SetPinned {
+        id: ClipId,
+        pinned: bool,
+    },
+    Delete {
+        id: ClipId,
+    },
 
     Status,
-    SetPaused { paused: bool },
+    SetPaused {
+        paused: bool,
+    },
     Devices,
-    ForgetDevice { device: DeviceId },
+    ForgetDevice {
+        device: DeviceId,
+    },
 
     GetSettings,
     UpdateSettings(Box<Settings>),
@@ -77,7 +110,11 @@ pub enum Request {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Response {
-    Hello { daemon_version: String, ipc_version: u16, device: DeviceId },
+    Hello {
+        daemon_version: String,
+        ipc_version: u16,
+        device: DeviceId,
+    },
     Clips(Vec<Clip>),
     Clip(Option<Box<Clip>>),
     Status(Box<DaemonStatus>),
@@ -97,7 +134,9 @@ pub enum Event {
     DeviceChanged(PeerInfo),
     /// A capture was dropped. Carries the *reason only* — the suppressed
     /// content must never leave the capture path, not even to a local UI.
-    Suppressed { reason: String },
+    Suppressed {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, thiserror::Error)]
@@ -109,7 +148,10 @@ pub struct IpcError {
 
 impl IpcError {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 }
 
@@ -231,7 +273,10 @@ mod tests {
     #[test]
     fn default_settings_are_safe() {
         let s = Settings::default();
-        assert!(s.detect_secrets, "secret detection must never default to off");
+        assert!(
+            s.detect_secrets,
+            "secret detection must never default to off"
+        );
         assert_eq!(s.blob_quota_bytes, 2 * 1024 * 1024 * 1024);
     }
 }

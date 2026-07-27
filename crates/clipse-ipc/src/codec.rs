@@ -94,14 +94,19 @@ mod tests {
     async fn reads_frames_back_to_back() {
         let mut buf = Vec::new();
         for i in 0..3u64 {
-            write_frame(&mut buf, &Frame::request(i, Request::Status)).await.unwrap();
+            write_frame(&mut buf, &Frame::request(i, Request::Status))
+                .await
+                .unwrap();
         }
 
         let mut cursor = std::io::Cursor::new(buf);
         for i in 0..3u64 {
             assert_eq!(read_frame(&mut cursor).await.unwrap().id, i);
         }
-        assert!(matches!(read_frame(&mut cursor).await, Err(FrameError::Closed)));
+        assert!(matches!(
+            read_frame(&mut cursor).await,
+            Err(FrameError::Closed)
+        ));
     }
 
     #[tokio::test]
@@ -121,15 +126,21 @@ mod tests {
         let mut buf = (body.len() as u32).to_le_bytes().to_vec();
         buf.extend_from_slice(body);
         let mut cursor = std::io::Cursor::new(buf);
-        assert!(matches!(read_frame(&mut cursor).await, Err(FrameError::Decode(_))));
+        assert!(matches!(
+            read_frame(&mut cursor).await,
+            Err(FrameError::Decode(_))
+        ));
     }
 
     #[tokio::test]
     async fn truncated_frame_is_an_error_not_a_hang() {
         let mut buf = Vec::new();
-        write_frame(&mut buf, &Frame::event(Event::ClipRemoved(ClipId::generate())))
-            .await
-            .unwrap();
+        write_frame(
+            &mut buf,
+            &Frame::event(Event::ClipRemoved(ClipId::generate())),
+        )
+        .await
+        .unwrap();
         buf.truncate(buf.len() - 3);
 
         let mut cursor = std::io::Cursor::new(buf);

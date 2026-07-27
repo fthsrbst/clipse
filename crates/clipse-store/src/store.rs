@@ -276,13 +276,29 @@ impl Store {
     /// before calling `insert`; `insert` itself re-does this check inside
     /// its own transaction rather than trusting a caller's prior call.
     pub fn by_hash(&self, hash: &ContentHash) -> Result<Option<Clip>> {
+        self.lookup_by_hash(hash, false)
+    }
+
+    /// Like [`Self::by_hash`], but finds tombstones too.
+    ///
+    /// The sync engine must use this one. Hiding a tombstone from a hash
+    /// lookup makes deleted content look *unknown*, so a peer that still has
+    /// it would be asked for it and the clip would come back from the dead —
+    /// which is both a correctness bug and, for anything a user deliberately
+    /// deleted, a privacy one.
+    pub fn by_hash_including_deleted(&self, hash: &ContentHash) -> Result<Option<Clip>> {
+        self.lookup_by_hash(hash, true)
+    }
+
+    fn lookup_by_hash(&self, hash: &ContentHash, include_deleted: bool) -> Result<Option<Clip>> {
         let conn = self.conn.lock().expect(LOCK_POISONED);
+        let sql = if include_deleted {
+            "SELECT id FROM clip WHERE hash = ?1 ORDER BY deleted ASC LIMIT 1"
+        } else {
+            "SELECT id FROM clip WHERE hash = ?1 AND deleted = 0 LIMIT 1"
+        };
         let id: Option<String> = conn
-            .query_row(
-                "SELECT id FROM clip WHERE hash = ?1 AND deleted = 0 LIMIT 1",
-                params![hash.to_hex()],
-                |row| row.get(0),
-            )
+            .query_row(sql, params![hash.to_hex()], |row| row.get(0))
             .optional()?;
         match id {
             Some(id) => load_clip(&conn, &id),
@@ -355,11 +371,21 @@ impl Store {
         rows_to_clips(&conn, raws)
     }
 
-    pub fn set_pinned(&self, id: ClipId, pinned: bool) -> Result<()> {
+    /// Pin or unpin, stamping a fresh [`Hlc`] for the same reason `delete`
+    /// does: a metadata change that does not move the clock cannot replicate.
+    pub fn set_pinned(&self, id: ClipId, pinned: bool, hlc: Hlc) -> Result<()> {
         let conn = self.conn.lock().expect(LOCK_POISONED);
         let changed = conn.execute(
-            "UPDATE clip SET pinned = ?1 WHERE id = ?2",
-            params![pinned as i64, id.to_string()],
+            "UPDATE clip SET pinned = ?1,
+                    hlc_wall_ms = ?2, hlc_counter = ?3, hlc_device = ?4
+             WHERE id = ?5",
+            params![
+                pinned as i64,
+                hlc.wall_ms as i64,
+                hlc.counter as i64,
+                hlc.device.to_string(),
+                id.to_string()
+            ],
         )?;
         if changed == 0 {
             return Err(Error::NotFound(id));
@@ -372,14 +398,28 @@ impl Store {
     /// replicate the deletion to peers. Idempotent -- deleting an
     /// already-deleted (or already-purged) id is not an error, since a peer
     /// retrying after a lost acknowledgement must not see one.
-    pub fn delete(&self, id: ClipId) -> Result<()> {
+    /// Tombstone a clip, stamping it with a fresh [`Hlc`].
+    ///
+    /// The new timestamp is not decoration: a tombstone that keeps the clip's
+    /// original HLC is indistinguishable from the live clip to every merge
+    /// rule and every sync cursor, so the deletion would never replicate and
+    /// the clip would come back from whichever device still had it.
+    pub fn delete(&self, id: ClipId, hlc: Hlc) -> Result<()> {
         let mut conn = self.conn.lock().expect(LOCK_POISONED);
         let tx = conn.transaction()?;
         let id_str = id.to_string();
 
         let changed = tx.execute(
-            "UPDATE clip SET deleted = 1, deleted_at_ms = ?1 WHERE id = ?2 AND deleted = 0",
-            params![current_epoch_ms() as i64, id_str],
+            "UPDATE clip SET deleted = 1, deleted_at_ms = ?1,
+                    hlc_wall_ms = ?2, hlc_counter = ?3, hlc_device = ?4
+             WHERE id = ?5 AND deleted = 0",
+            params![
+                current_epoch_ms() as i64,
+                hlc.wall_ms as i64,
+                hlc.counter as i64,
+                hlc.device.to_string(),
+                id_str
+            ],
         )?;
 
         if changed > 0 {

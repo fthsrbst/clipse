@@ -11,7 +11,7 @@ pub mod hlc;
 pub mod id;
 pub mod paths;
 
-pub use clip::{Clip, ClipFormat, ClipKind, ClipSource, Payload, PayloadBody, INLINE_MAX_BYTES};
+pub use clip::{Clip, ClipFormat, ClipKind, ClipSource, INLINE_MAX_BYTES, Payload, PayloadBody};
 pub use error::{Error, Result};
 pub use hash::ContentHash;
 pub use hlc::{Hlc, HlcClock, MAX_CLOCK_DRIFT_MS};

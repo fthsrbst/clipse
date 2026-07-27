@@ -92,6 +92,21 @@ decide whether the peer needs it without shipping any content.
 
 ## 5. The exchange
 
+**One side talks at a time, and the dialler goes first.** A symmetric exchange
+where both ends write their whole summary before reading deadlocks the moment
+both summaries exceed the QUIC flow-control window — each side is blocked
+writing and neither is reading. Strict alternation costs one round trip and
+removes the failure mode entirely:
+
+1. Dialler sends `Hello`; responder replies `Hello`.
+2. **Dialler's turn**: it sends `Summary` pages, the responder answers `Want`,
+   the dialler sends the wanted `Push`es, the responder sends `Ack`.
+3. **Responder's turn**: the same, roles swapped.
+
+A Noise session has independent send and receive nonces, so a future version
+could split the link and run both directions concurrently. That is not worth
+doing until someone measures the round trip actually mattering.
+
 On connect each side sends `Hello` with its `max_hlc`. Then:
 
 1. Each side sends `Summary` for everything it has since the peer's `max_hlc`,

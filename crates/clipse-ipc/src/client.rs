@@ -78,7 +78,7 @@ impl Client {
                 }
                 FrameBody::Request(_) => {
                     return Err(
-                        IpcError::new(ErrorCode::BadRequest, "daemon sent a request").into()
+                        IpcError::new(ErrorCode::BadRequest, "daemon sent a request").into(),
                     );
                 }
             }
@@ -89,8 +89,12 @@ impl Client {
     /// after `Subscribe` the daemon may push at any time.
     pub async fn subscribe(mut self) -> Result<EventStream, ClientError> {
         match self.call(Request::Subscribe).await? {
-            Response::Ok => Ok(EventStream { stream: self.stream }),
-            _ => Err(ClientError::UnexpectedResponse { expected: "Subscribe" }),
+            Response::Ok => Ok(EventStream {
+                stream: self.stream,
+            }),
+            _ => Err(ClientError::UnexpectedResponse {
+                expected: "Subscribe",
+            }),
         }
     }
 }

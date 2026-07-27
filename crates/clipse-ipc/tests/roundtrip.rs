@@ -34,7 +34,9 @@ async fn serve_one(mut listener: Listener, device: DeviceId) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let FrameBody::Request(request) = frame.body else { continue };
+        let FrameBody::Request(request) = frame.body else {
+            continue;
+        };
 
         let response = match request {
             Request::Hello { .. } => Response::Hello {
@@ -49,12 +51,16 @@ async fn serve_one(mut listener: Listener, device: DeviceId) {
         };
         let subscribed = matches!(request, Request::Subscribe);
 
-        write_frame(&mut stream, &Frame::response(frame.id, response)).await.unwrap();
+        write_frame(&mut stream, &Frame::response(frame.id, response))
+            .await
+            .unwrap();
 
         if subscribed {
             write_frame(
                 &mut stream,
-                &Frame::event(Event::Suppressed { reason: "password manager".into() }),
+                &Frame::event(Event::Suppressed {
+                    reason: "password manager".into(),
+                }),
             )
             .await
             .unwrap();
@@ -73,7 +79,9 @@ async fn handshake_command_and_event_over_the_real_transport() {
     let listener = Listener::bind(&endpoint).await.expect("bind");
     let server = tokio::spawn(serve_one(listener, device));
 
-    let mut client = Client::connect(&endpoint, "test-ui").await.expect("connect");
+    let mut client = Client::connect(&endpoint, "test-ui")
+        .await
+        .expect("connect");
 
     match client.call(Request::Status).await.unwrap() {
         Response::Status(s) => {
@@ -83,7 +91,11 @@ async fn handshake_command_and_event_over_the_real_transport() {
         other => panic!("unexpected: {other:?}"),
     }
 
-    match client.call(Request::History(HistoryQuery::page(10))).await.unwrap() {
+    match client
+        .call(Request::History(HistoryQuery::page(10)))
+        .await
+        .unwrap()
+    {
         Response::Clips(clips) => assert!(clips.is_empty()),
         other => panic!("unexpected: {other:?}"),
     }
@@ -104,7 +116,9 @@ async fn connecting_without_a_daemon_is_a_clear_error() {
     let paths = Paths::with_root(dir.path());
     paths.create_all().unwrap();
 
-    let err = Client::connect(&paths.ipc_endpoint(), "test-ui").await.unwrap_err();
+    let err = Client::connect(&paths.ipc_endpoint(), "test-ui")
+        .await
+        .unwrap_err();
     let text = err.to_string();
     assert!(text.contains("no Clipse daemon"), "unhelpful error: {text}");
 }

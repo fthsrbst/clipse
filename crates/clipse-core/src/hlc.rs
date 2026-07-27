@@ -34,7 +34,11 @@ pub struct Hlc {
 
 impl Hlc {
     pub fn new(wall_ms: u64, counter: u32, device: DeviceId) -> Self {
-        Self { wall_ms, counter, device }
+        Self {
+            wall_ms,
+            counter,
+            device,
+        }
     }
 }
 
@@ -72,12 +76,20 @@ struct State {
 
 impl HlcClock {
     pub fn new(device: DeviceId) -> Self {
-        Self { device, state: Mutex::new(State::default()), now_ms: system_now_ms }
+        Self {
+            device,
+            state: Mutex::new(State::default()),
+            now_ms: system_now_ms,
+        }
     }
 
     #[cfg(test)]
     fn with_clock(device: DeviceId, now_ms: fn() -> u64) -> Self {
-        Self { device, state: Mutex::new(State::default()), now_ms }
+        Self {
+            device,
+            state: Mutex::new(State::default()),
+            now_ms,
+        }
     }
 
     pub fn device(&self) -> DeviceId {
@@ -233,7 +245,11 @@ mod tests {
     fn device_id_breaks_ties_deterministically() {
         let a = DeviceId::generate();
         let b = DeviceId::generate();
-        let (lo, hi) = if a.as_uuid() < b.as_uuid() { (a, b) } else { (b, a) };
+        let (lo, hi) = if a.as_uuid() < b.as_uuid() {
+            (a, b)
+        } else {
+            (b, a)
+        };
         assert!(Hlc::new(1, 0, lo) < Hlc::new(1, 0, hi));
     }
 
