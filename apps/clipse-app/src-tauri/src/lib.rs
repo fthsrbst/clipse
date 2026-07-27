@@ -83,6 +83,11 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::hide_popup,
+            commands::begin_pairing,
+            commands::pair_with_uri,
+            commands::confirm_pairing,
+            commands::cancel_pairing,
+            commands::forget_device,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

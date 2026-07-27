@@ -51,10 +51,18 @@ anything until both are told the digits matched. Three tests drive two real
 daemon processes through it — including refusing the code, which must pair
 nothing.
 
-**F2 is complete.** What is left in the app is a pairing *screen*: the IPC
-messages and events are in place (`BeginPairing`, `PairWithUri`,
-`ConfirmPairing`, `CancelPairing`, and the `pairing-code` / `pairing-ended`
-events reach the webview), but no UI renders them yet.
+**F2 is complete.** What is left in the app is a pairing *screen*. Everything
+under it is done and reachable from the frontend: the Tauri commands
+`begin_pairing`, `pair_with_uri`, `confirm_pairing`, `cancel_pairing` and
+`forget_device` exist, and the `pairing-code` / `pairing-ended` events arrive
+in the webview. What is missing is React: a view that shows the offer, takes a
+pasted one from the other device, puts the two six-digit codes side by side and
+*asks* whether they match.
+
+Rendering the offer as an actual QR image needs a QR encoder, and this app
+takes no dependency it does not need — writing one is the larger half of that
+screen. Pairing works without it: the offer is a `clipse://pair/...` string
+that can be copied between devices.
 
 ## F3 — macOS notch
 

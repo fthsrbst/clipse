@@ -155,6 +155,75 @@ pub async fn devices(state: State<'_, Arc<AppState>>) -> Result<Vec<PeerInfo>, C
     }
 }
 
+/// What `BeginPairing` produces: the string the pairing screen renders as a QR
+/// code, and when it stops being valid.
+#[derive(serde::Serialize)]
+pub struct PairingOffer {
+    pub uri: String,
+    pub expires_at_ms: u64,
+}
+
+/// The six digits both devices show. The user compares them; matching is what
+/// makes the pairing safe, so the screen must present them side by side and
+/// ask, not merely display them.
+#[derive(serde::Serialize)]
+pub struct PairingCode {
+    pub digits: String,
+    pub peer_label: String,
+}
+
+#[tauri::command]
+pub async fn begin_pairing(state: State<'_, Arc<AppState>>) -> Result<PairingOffer, CommandError> {
+    match call(&state, Request::BeginPairing).await? {
+        Response::PairingOffer { uri, expires_at_ms } => Ok(PairingOffer { uri, expires_at_ms }),
+        _ => Err(unexpected("begin_pairing")),
+    }
+}
+
+#[tauri::command]
+pub async fn pair_with_uri(
+    state: State<'_, Arc<AppState>>,
+    uri: String,
+) -> Result<PairingCode, CommandError> {
+    match call(&state, Request::PairWithUri { uri }).await? {
+        Response::PairingCode { digits, peer_label } => Ok(PairingCode { digits, peer_label }),
+        _ => Err(unexpected("pair_with_uri")),
+    }
+}
+
+/// `accept` is the user's answer to "do these six digits match?". Passing true
+/// without having asked would defeat the only defence against a
+/// man-in-the-middle that this protocol has.
+#[tauri::command]
+pub async fn confirm_pairing(
+    state: State<'_, Arc<AppState>>,
+    accept: bool,
+) -> Result<(), CommandError> {
+    match call(&state, Request::ConfirmPairing { accept }).await? {
+        Response::Ok => Ok(()),
+        _ => Err(unexpected("confirm_pairing")),
+    }
+}
+
+#[tauri::command]
+pub async fn cancel_pairing(state: State<'_, Arc<AppState>>) -> Result<(), CommandError> {
+    match call(&state, Request::CancelPairing).await? {
+        Response::Ok => Ok(()),
+        _ => Err(unexpected("cancel_pairing")),
+    }
+}
+
+#[tauri::command]
+pub async fn forget_device(
+    state: State<'_, Arc<AppState>>,
+    device: clipse_core::DeviceId,
+) -> Result<(), CommandError> {
+    match call(&state, Request::ForgetDevice { device }).await? {
+        Response::Ok => Ok(()),
+        _ => Err(unexpected("forget_device")),
+    }
+}
+
 #[tauri::command]
 pub async fn get_settings(state: State<'_, Arc<AppState>>) -> Result<Settings, CommandError> {
     match call(&state, Request::GetSettings).await? {
