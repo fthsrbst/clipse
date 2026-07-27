@@ -6,8 +6,16 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+description = "Protocol and transport between the Clipse daemon and its user interfaces."
 
 [dependencies]
 clipse-core.workspace = true
+rmp-serde.workspace = true
+serde.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time", "macros"] }
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }

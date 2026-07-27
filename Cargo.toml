@@ -9,7 +9,7 @@ members = [
     "crates/clipse-sync",
     "crates/clipse-ipc",
     "crates/clipsed",
-
+    "apps/clipse-app/src-tauri",
 ]
 
 [workspace.package]

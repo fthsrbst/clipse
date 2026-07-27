@@ -16,6 +16,7 @@ pub use error::{Error, Result};
 pub use hash::ContentHash;
 pub use hlc::{Hlc, HlcClock, MAX_CLOCK_DRIFT_MS};
 pub use id::{ClipId, DeviceId};
+pub use paths::Paths;
 
 /// Bumped whenever the wire format between two daemons changes incompatibly.
 pub const PROTOCOL_VERSION: u16 = 1;
