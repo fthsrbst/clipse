@@ -10,7 +10,22 @@ description = "Peer reachability for Clipse: candidate addresses, mDNS records, 
 
 [dependencies]
 clipse-core.workspace = true
+clipse-crypto.workspace = true
+clipse-sync.workspace = true
+
+rmp-serde.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "io-util", "net"] }
 tracing.workspace = true
+
+# QUIC. rustls is pinned to 0.23 rather than tracking latest: 0.24 is a
+# pre-release and quinn 0.11 is built against 0.23.
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.14"
+mdns-sd = "0.20"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "test-util"] }

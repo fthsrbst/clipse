@@ -10,9 +10,14 @@
 //! order gains a rule, and nothing in `clipse-sync` changes.
 
 pub mod candidate;
+pub mod framing;
 pub mod mdns;
+pub mod quic;
 pub mod tailnet;
+pub mod transport;
 
 pub use candidate::{Candidate, CandidateList, Reachability};
 pub use mdns::{SERVICE_TYPE, ServiceRecord};
+pub use quic::{PeerLink, QuicError, QuicTransport};
 pub use tailnet::{TailnetError, TailnetPeer, TailnetStatus};
+pub use transport::{AttemptFailure, Backoff, DialError, LinkError, LinkInfo};
