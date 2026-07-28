@@ -10,6 +10,19 @@ result means the daemon is right and not merely that the UI renders:
 cargo run -p clipsed --example clipse-ctl -- --data-dir ./.clipse-dev/a status
 ```
 
+## Two ways to waste an afternoon
+
+**Do not run `target/debug/clipse-app.exe` directly.** In a debug profile Tauri
+serves the frontend from `devUrl`, not from the bundled `frontendDist`, so the
+window opens on `ERR_CONNECTION_REFUSED` and looks like a broken app. Use
+`pnpm tauri dev`, or build a release profile, which embeds `dist`.
+
+**Point the app and the daemon at the data directory the same way.** `tauri dev`
+runs the binary from `apps/clipse-app/src-tauri`, so a relative `CLIPSE_DATA_DIR`
+does not mean what it means to a daemon started from the repo root — you get a
+daemon and a UI in two different directories, and the UI can only say "Clipse
+isn't running". Pass an absolute path to both.
+
 ## Log
 
 **2026-07-27, Windows 11.** Daemon run against a scratch directory; five items
@@ -18,6 +31,41 @@ An AWS access key and a Luhn-valid card number were both suppressed; `order
 12345678901234 shipped` was kept, which is the false-positive case the issuer
 prefix rule exists for. Search, ordering and the source-device label were
 correct. Items 4, 5, 7, 8, 9 and the GUI half of 1–3 below are still unrun.
+
+**2026-07-28, Windows 11 — the GUI, seen at last.** `pnpm tauri dev` against a
+running daemon. The history window renders: previews, relative timestamps, the
+source-device label, a link glyph on the URL, per-row pin/copy/delete, and the
+footer count. Images captured from another process arrived with their size
+(75 KB and 1.3 MB), so the blob path is exercised too. Killing the daemon under
+a live window shows the "Clipse isn't running" state, and restarting it
+reconnects on its own — no reload, no button. Suppressed items return nothing
+from search, which is the stronger claim: they are absent from the store rather
+than hidden by the UI. Still unrun here: the pairing screen and the hotkey
+popup, both of which need a driven UI.
+
+**2026-07-28, macOS 26.5.2 (arm64).** First execution of the macOS clipboard
+backend — until today it had only ever been type-checked. Capture, previews,
+formats and sizes correct. Both secrets suppressed, confirmed by `strings` over
+`clipse.db`, `-wal` and `-shm` rather than by asking the daemon. `SIGTERM` exits
+in about a second with no lingering process, so the Windows teardown hang has no
+counterpart here. `apps/clipse-notch` compiled for the first time (see below).
+
+**2026-07-28, Debian 13 aarch64 (Raspberry Pi 5).** Both Linux backends ran for
+the first time. X11 under `Xvfb :99`: three clips pushed with `xsel`, all
+captured with correct previews and byte counts. **Wayland under a headless
+`labwc`** (a wlroots compositor, so `wlr-data-control` is present): `wl-copy`
+captured, and `clipse-ctl` reported `capture Automatic` — the real watch path,
+not the manual-push fallback. Both secrets suppressed, confirmed by `strings`
+over the database and WAL; `order 12345678901234 shipped` stored. `SIGTERM`
+exits in about a second on both paths.
+
+Two things worth knowing before repeating this. `cargo test --workspace` fails
+on Linux without a display — `daemon_e2e` starts a real clipboard watcher, which
+refuses to start when neither `DISPLAY` nor `WAYLAND_DISPLAY` is set. That is
+what `xvfb-run -a` in the CI job is for; from a bare SSH session you have to
+supply it yourself. And `xsel --clipboard --input` needs no `--keep`: it forks
+into the background on its own to retain CLIPBOARD ownership, whereas `--keep`
+only covers PRIMARY and SECONDARY.
 
 ## F1 — one device
 
@@ -91,13 +139,15 @@ cargo run -p clipsed -- --data-dir ./.clipse-dev/b
 
 ## F3 — macOS notch
 
-Build it first — nobody has:
+It builds now — `swift build` was first run on a real Mac on 2026-07-28 and
+failed, on `override func mouseEntered/mouseExited` in a controller that is an
+`NSObject` and not an `NSResponder`. That is fixed. Do not trust `ci.yml` to
+have caught things like this: the repository has no remote, so no workflow in it
+has ever executed.
 
-```bash
-cd apps/clipse-notch && swift build
-```
-
-On a notched MacBook: the panel hovers open, shows the last three clips, is
+What remains needs eyes on a physical machine, because the window server is not
+reachable over SSH. On a notched MacBook: the panel hovers open, shows the last
+three clips, is
 positioned from `NSScreen.safeAreaInsets` (verify on an external display too,
 where there is no notch), accepts a drag-and-drop, and animates the source
 device. It must not steal focus from the frontmost app.

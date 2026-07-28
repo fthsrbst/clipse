@@ -7,7 +7,10 @@ driven by hand. `docs/manual-verification.md` is that checklist.
 
 - Cargo workspace, nine crates, shared domain types in `clipse-core`
 - HLC, content hashing and the clip model, unit tested
-- GitHub Actions: three-platform matrix, a SQLCipher job, a cross-check job
+- GitHub Actions: three-platform matrix, a SQLCipher job, a cross-check job —
+  **written, never executed.** There is no remote to dispatch them, so every
+  workflow in `.github/` is unproven, and so is anything it was expected to
+  prove. The local commands in `CLAUDE.md` are the only evidence there is.
 
 ## F1 — One device
 
@@ -16,7 +19,10 @@ driven by hand. `docs/manual-verification.md` is that checklist.
 - `clipse-clipboard` — Windows (`AddClipboardFormatListener`), macOS
   (`NSPasteboard.changeCount`), X11 (XFIXES), Wayland (`wlr-data-control`),
   GNOME Wayland manual-push. Sensitive-content suppression: platform concealed
-  markers, app blocklist, secret detectors.
+  markers, app blocklist, secret detectors. All four watch paths have now been
+  executed on real hardware, not merely compiled — Windows, macOS 26 on arm64,
+  and X11 plus wlroots Wayland on aarch64 Debian. Suppression was checked on
+  each by searching the database bytes, not by asking the daemon.
 - `clipse-store` — SQLite + FTS5 history, content-addressed blobs, LRU quota
   that never touches text or pinned clips.
 - `clipse-ipc` + `clipsed` — capture → store → serve, over a unix socket or a
@@ -24,8 +30,10 @@ driven by hand. `docs/manual-verification.md` is that checklist.
 - `clipse-app` (Rust half) — connection with backoff, tray, global hotkey,
   popup positioning, a mock daemon for development.
 
-**Remaining:** the React frontend, and running the F1 manual checklist on
-Windows.
+**Remaining:** the pairing screen and the hotkey popup have never been driven by
+hand — the history window has (2026-07-28, Windows), and it reconnects on its own
+when the daemon comes back. A password manager still has to be tested against
+the real thing by a person.
 
 ## F2 — Two devices
 
@@ -84,14 +92,19 @@ newline-delimited JSON, reading pastes back out — so it is wired in rather
 than an orphan file. That bridge is `src-tauri/src/notch.rs`, compiled only on
 macOS.
 
-**None of it has been compiled or run here.** It was written on Windows with
-no Swift toolchain, and the Tauri app cannot even be cross-checked for macOS
-from this machine because its Objective-C dependencies need a C compiler for
-the target. CI is what compiles both halves: a macOS job builds the Swift
-package, and the macOS leg of the test matrix builds the bridge. That answers
-"does it compile". Whether the panel sits correctly under a notch is a
-question only someone looking at a MacBook can answer — as with the macOS
-clipboard backend, which CI compiles and nobody has executed.
+It was written on Windows with no Swift toolchain, and the Tauri app cannot be
+cross-checked for macOS from this machine because its Objective-C dependencies
+need a C compiler for the target.
+
+`ci.yml` does define a macOS job that runs `swift build`, and the macOS leg of
+the test matrix would build the bridge — but **none of it has ever run**: this
+repository has no git remote, so no workflow in it has ever been dispatched.
+Nothing here was ever compiled by CI, and no claim in these docs should lean on
+CI as evidence.
+
+The Swift package was first compiled on a real Mac on 2026-07-28 and did not
+build; see `docs/manual-verification.md` §F3. Whether the panel sits correctly
+under a notch remains a question only someone looking at a MacBook can answer.
 
 Bundling `ClipseNotch` into the .app is part of the packaging that has also
 never been run; see `docs/packaging.md`.
