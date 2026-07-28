@@ -738,6 +738,7 @@ dependencies = [
  "anyhow",
  "clipse-core",
  "clipse-ipc",
+ "clipsed",
  "image",
  "qrcode",
  "serde",

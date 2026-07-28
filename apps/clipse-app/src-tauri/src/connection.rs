@@ -12,6 +12,7 @@ use std::time::Duration;
 use clipse_ipc::client::EventStream;
 use clipse_ipc::{Client, DaemonStatus, Event, Request, Response};
 use tauri::{AppHandle, Emitter};
+use tokio::sync::oneshot;
 
 use crate::state::AppState;
 use crate::tray;
@@ -20,8 +21,18 @@ const MIN_BACKOFF: Duration = Duration::from_millis(500);
 const MAX_BACKOFF: Duration = Duration::from_secs(5);
 
 /// Spawn the reconnect-forever task. Runs for the lifetime of the app.
-pub fn spawn(app: AppHandle, state: Arc<AppState>) {
-    tauri::async_runtime::spawn(run_loop(app, state));
+///
+/// `ready` fires when the in-process daemon is answering requests. Waiting for
+/// it means a fresh launch goes straight to the history instead of showing
+/// "Clipse isn't running" for the half second before the first connect lands —
+/// a lie, and the first thing a new user would see. A dropped sender resolves
+/// immediately, so a daemon that failed to start still falls through to the
+/// backoff loop and the honest offline state.
+pub fn spawn(app: AppHandle, state: Arc<AppState>, ready: oneshot::Receiver<()>) {
+    tauri::async_runtime::spawn(async move {
+        let _ = ready.await;
+        run_loop(app, state).await;
+    });
 }
 
 async fn run_loop(app: AppHandle, state: Arc<AppState>) {

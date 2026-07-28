@@ -28,6 +28,8 @@ clipse-crypto = { path = "crates/clipse-crypto" }
 clipse-net = { path = "crates/clipse-net" }
 clipse-sync = { path = "crates/clipse-sync" }
 clipse-ipc = { path = "crates/clipse-ipc" }
+# The desktop app embeds the daemon so Clipse ships as one executable.
+clipsed = { path = "crates/clipsed" }
 
 anyhow = "1.0"
 thiserror = "2.0"

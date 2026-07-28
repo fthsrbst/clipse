@@ -1,5 +1,6 @@
 mod commands;
 mod connection;
+mod daemon_host;
 mod hotkey;
 #[cfg(target_os = "macos")]
 mod notch;
@@ -8,23 +9,24 @@ mod state;
 mod tray;
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use state::AppState;
 
-/// `CLIPSE_DATA_DIR` lets a developer point both the app and the mock daemon
-/// at the same temp directory (see `examples/mock-daemon.rs` and the README);
-/// production installs fall back to the platform default.
-fn resolve_endpoint() -> String {
+/// `CLIPSE_DATA_DIR` lets a developer point both the app and a standalone
+/// daemon at the same temp directory (see the README); production installs fall
+/// back to the platform default.
+fn resolve_paths() -> clipse_core::Paths {
     let paths = match std::env::var_os("CLIPSE_DATA_DIR") {
         Some(dir) => clipse_core::Paths::with_root(dir),
         None => clipse_core::Paths::platform_default()
             .unwrap_or_else(|_| clipse_core::Paths::with_root(".clipse-dev/app")),
     };
     let _ = paths.create_all();
-    paths.ipc_endpoint()
+    paths
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -33,10 +35,16 @@ pub fn run() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
 
-    let endpoint = resolve_endpoint();
+    let paths = resolve_paths();
     let default_hotkey = clipse_ipc::Settings::default().hotkey;
-    let app_state = Arc::new(AppState::new(endpoint, default_hotkey.clone()));
+    let app_state = Arc::new(AppState::new(paths.ipc_endpoint(), default_hotkey.clone()));
     let connection_state = app_state.clone();
+
+    // Held so the daemon can be told to flush on the way out. `Mutex<Option<_>>`
+    // because the exit handler is `Fn`, not `FnOnce`, and must be able to take
+    // the handle exactly once.
+    let embedded: Arc<Mutex<Option<daemon_host::EmbeddedDaemon>>> = Arc::new(Mutex::new(None));
+    let embedded_for_exit = Arc::clone(&embedded);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -55,7 +63,13 @@ pub fn run() {
 
             tray::build(&handle)?;
             hotkey::register_initial(&handle, &default_hotkey);
-            connection::spawn(handle.clone(), connection_state);
+
+            // The daemon comes up before anything tries to talk to it.
+            let (daemon, ready) = daemon_host::spawn(paths);
+            *embedded
+                .lock()
+                .expect("the exit handler is the only other holder") = daemon;
+            connection::spawn(handle.clone(), connection_state, ready);
 
             // Escape is handled in the popup's own JS (it calls the
             // `hide_popup` command); losing focus — clicking elsewhere — is
@@ -91,6 +105,18 @@ pub fn run() {
             commands::cancel_pairing,
             commands::forget_device,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_handle, event| {
+            // Quitting the app has to stop the daemon it started, and give it
+            // long enough to write the config and the clock back out.
+            if let tauri::RunEvent::Exit = event
+                && let Some(mut daemon) = embedded_for_exit
+                    .lock()
+                    .expect("the setup hook has finished by now")
+                    .take()
+            {
+                daemon.shutdown();
+            }
+        });
 }
