@@ -253,8 +253,11 @@ final class NotchController: NSObject, NSApplicationDelegate {
         trackingArea = area
     }
 
-    override func mouseEntered(with event: NSEvent) { setExpanded(true) }
-    override func mouseExited(with event: NSEvent) { setExpanded(false) }
+    // Not `override`: this controller is an NSObject, not an NSResponder, so
+    // there is nothing to override. AppKit sends these to an NSTrackingArea's
+    // `owner` by selector, which does not care about the class hierarchy.
+    func mouseEntered(with event: NSEvent) { setExpanded(true) }
+    func mouseExited(with event: NSEvent) { setExpanded(false) }
 
     private func setExpanded(_ value: Bool) {
         guard value != expanded, let panel, let screen = Placement.current else { return }
@@ -298,10 +301,18 @@ final class NotchController: NSObject, NSApplicationDelegate {
     /// One JSON object per line, on a background queue so the run loop keeps
     /// drawing while the app is quiet.
     private func readStdin() {
+        // The Rust side derives Serialize with no `rename_all`, so it writes
+        // snake_case (`source_label`, `from_peer`) while these properties are
+        // camelCase. Without the conversion every `clips` message fails to
+        // decode and `try?` throws the error away: the panel would just stay
+        // empty forever, with nothing logged on either side.
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+
         DispatchQueue.global(qos: .utility).async {
             while let line = readLine(strippingNewline: true) {
                 guard let data = line.data(using: .utf8),
-                      let message = try? JSONDecoder().decode(Incoming.self, from: data)
+                      let message = try? decoder.decode(Incoming.self, from: data)
                 else { continue }
 
                 DispatchQueue.main.async {
