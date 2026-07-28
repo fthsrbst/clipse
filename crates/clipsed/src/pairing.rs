@@ -20,6 +20,21 @@ use clipse_crypto::{
     CandidateAddress, DeviceIdentity, PairedDevice, PairingAccept, PairingConfirm,
     PairingInitiator, PairingOffer, PairingResponder, Platform, Sas,
 };
+use tracing::debug;
+
+/// Collapse any failure in the ceremony to `Failed`, but log which step it was
+/// on the way out.
+///
+/// The pairing surface deliberately says only "pairing failed" — telling a
+/// caller *why* a handshake did not verify is telling an attacker which half of
+/// their guess was right. That leaves the operator with a message that
+/// `clipse-crypto` renders identically, so nothing in the error itself says
+/// whether a URI failed to parse, the network call failed, or the SAS did not
+/// verify. This log line is the only place that distinction survives.
+fn failed(step: &'static str, error: impl std::fmt::Display) -> PairingError {
+    debug!(step, %error, "pairing failed");
+    PairingError::Failed
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PairingError {
@@ -97,10 +112,11 @@ impl PairingState {
             return Err(PairingError::Expired);
         }
 
-        let accept = PairingAccept::from_bytes(accept_bytes).map_err(|_| PairingError::Failed)?;
+        let accept =
+            PairingAccept::from_bytes(accept_bytes).map_err(|e| failed("parse accept", e))?;
         let (confirm, sas, peer) = initiator
             .accept(&accept, now)
-            .map_err(|_| PairingError::Failed)?;
+            .map_err(|e| failed("initiator accept", e))?;
 
         *self = Self::AwaitingConfirmation {
             peer: Box::new(peer),
@@ -131,21 +147,21 @@ impl PairingState {
         // Where to reach them comes from the QR code itself, so it is read
         // before the responder consumes the URI.
         let peer_addresses = PairingOffer::from_uri(uri)
-            .map_err(|_| PairingError::Failed)?
+            .map_err(|e| failed("parse offer uri", e))?
             .addresses;
 
         let (responder, accept) =
             PairingResponder::from_offer(uri, identity, label, platform(), addresses, now)
-                .map_err(|_| PairingError::Failed)?;
+                .map_err(|e| failed("build responder", e))?;
         let confirm_bytes = send(peer_addresses, accept.to_bytes())
             .await
-            .map_err(|_| PairingError::Failed)?;
+            .map_err(|e| failed("send accept", e))?;
 
         let confirm =
-            PairingConfirm::from_bytes(&confirm_bytes).map_err(|_| PairingError::Failed)?;
+            PairingConfirm::from_bytes(&confirm_bytes).map_err(|e| failed("parse confirm", e))?;
         let (sas, peer) = responder
             .verify(&confirm, now_ms())
-            .map_err(|_| PairingError::Failed)?;
+            .map_err(|e| failed("verify confirm", e))?;
 
         *self = Self::AwaitingConfirmation {
             peer: Box::new(peer),
