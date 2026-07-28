@@ -14,15 +14,19 @@
   flex-shrink: 0;
 }
 
+/* The mark is sized in em against this, so the font-size lives on the wrapper
+ * and baseline alignment does the rest. */
 .brand {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: var(--type-lg);
 }
 
 .title {
-  font-size: var(--type-base);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1em;
+  font-weight: 400;
   color: var(--color-ink);
   letter-spacing: var(--tracking-tight);
 }

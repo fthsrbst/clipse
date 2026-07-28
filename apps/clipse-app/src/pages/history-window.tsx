@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { EclipseMark } from "../components/eclipse-mark";
+import { AsciiMark } from "../components/ascii-mark";
 import { SearchBox } from "../components/search-box";
 import { TypeFilterTabs } from "../components/type-filter-tabs";
 import { ClipList } from "../components/clip-list";
@@ -56,7 +56,7 @@ export function HistoryWindow() {
     <div className={styles.window}>
       <header className={styles.header}>
         <div className={styles.brand}>
-          <EclipseMark size={22} />
+          <AsciiMark />
           <span className={styles.title}>Clipse</span>
         </div>
         <button

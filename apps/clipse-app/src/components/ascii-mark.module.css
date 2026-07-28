@@ -1,0 +1,14 @@
+/* Sized in em so it tracks whatever heading it sits beside. The line-height is
+ * below 1 on purpose: three rows of mono at 1.0 would stand taller than the
+ * cap height of the wordmark and the pair would look mismatched. */
+.mark {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.38em;
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: 0.02em;
+  white-space: pre;
+  color: var(--color-accent);
+  user-select: none;
+}
