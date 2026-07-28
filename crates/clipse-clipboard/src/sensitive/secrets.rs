@@ -276,7 +276,10 @@ mod tests {
     #[test]
     fn detects_openai_key() {
         assert_eq!(
-            detect_secret(&["sk", "-abcdefghijklmnopqrstuvwxyz0123456789ABCD"].concat()),
+            detect_secret(&synthetic(&[
+                "sk",
+                "-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+            ])),
             Some(SecretKind::OpenAiKey)
         );
     }
@@ -284,7 +287,7 @@ mod tests {
     #[test]
     fn detects_google_api_key() {
         assert_eq!(
-            detect_secret(&["AIza", "SyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"].concat()),
+            detect_secret(&synthetic(&["AIza", "SyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"])),
             Some(SecretKind::GoogleApiKey)
         );
     }

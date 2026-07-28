@@ -410,11 +410,13 @@ mod tests {
         // is correct, but it must be *some* suppression, never Captured —
         // guards against a future reordering accidentally short-circuiting
         // past every check.
+        // Split so no complete secret-shaped literal exists in the source; a
+        // scanner cannot tell a synthetic fixture from a leak, and this one has
+        // to keep its exact shape to reach the detector at all. See the
+        // `synthetic` helper in sensitive/secrets.rs.
+        let key = [b"sk".as_slice(), b"_live_4eC39HqLyjWDarjtT1zdp7dc"].concat();
         let capture = Capture {
-            payloads: vec![(
-                ClipFormat::Text,
-                [b"sk".as_slice(), b"_live_4eC39HqLyjWDarjtT1zdp7dc"].concat(),
-            )],
+            payloads: vec![(ClipFormat::Text, key)],
             app: Some("Bitwarden".to_string()),
         };
         let event = classify(RawPoll::Data(capture), &config(), &OwnWriteGuard::default());
