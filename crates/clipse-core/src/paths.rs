@@ -77,8 +77,15 @@ impl Paths {
 #[cfg(windows)]
 fn short_tag(root: &Path) -> String {
     // Named pipes live in a single flat namespace, so the root path is hashed
-    // rather than embedded.
-    crate::hash::ContentHash::of(root.to_string_lossy().as_bytes()).to_hex()[..12].to_string()
+    // rather than embedded. The hash is taken over the *absolute* path because
+    // the daemon and the app are started separately, from different working
+    // directories, and only agree on which directory they mean — not on how it
+    // is spelled. Hashing the spelling makes `./x` and `C:\…\x` two endpoints
+    // for one directory, which the UI can only report as "not running". The
+    // unix branch has no such hazard: it names a file inside the root, so both
+    // spellings resolve to one socket.
+    let absolute = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
+    crate::hash::ContentHash::of(absolute.to_string_lossy().as_bytes()).to_hex()[..12].to_string()
 }
 
 #[cfg(test)]
@@ -98,5 +105,18 @@ mod tests {
         let a = Paths::with_root("/tmp/a").ipc_endpoint();
         let b = Paths::with_root("/tmp/b").ipc_endpoint();
         assert_ne!(a, b, "two daemons would fight over one endpoint");
+    }
+
+    #[test]
+    fn one_directory_spelled_two_ways_gets_one_endpoint() {
+        // The daemon takes `--data-dir` and the app takes `CLIPSE_DATA_DIR`;
+        // nothing makes the two agree on spelling, and `tauri dev` runs the app
+        // from a different working directory than the daemon. A relative and an
+        // absolute spelling of the same directory must reach the same endpoint,
+        // or the UI reports "not running" against a daemon that is running.
+        let cwd = std::env::current_dir().expect("a working directory");
+        let relative = Paths::with_root("./clipse-endpoint-test").ipc_endpoint();
+        let absolute = Paths::with_root(cwd.join("clipse-endpoint-test")).ipc_endpoint();
+        assert_eq!(relative, absolute);
     }
 }
