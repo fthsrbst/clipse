@@ -2,9 +2,16 @@
 //! monitor it landed on so it never spawns half off-screen on a multi-monitor
 //! setup.
 
-use tauri::{AppHandle, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
 pub const LABEL: &str = "popup";
+
+/// Told to the popup's webview every time it comes up.
+///
+/// The window is hidden between uses rather than destroyed, so its JS never
+/// mounts a second time and has no other way to know it is on screen again —
+/// which is when it needs to replay its entrance.
+const SHOWN_EVENT: &str = "popup:shown";
 
 pub fn show_near_cursor(app: &AppHandle) -> tauri::Result<()> {
     let Some(popup) = app.get_webview_window(LABEL) else {
@@ -17,6 +24,9 @@ pub fn show_near_cursor(app: &AppHandle) -> tauri::Result<()> {
 
     popup.show()?;
     popup.set_focus()?;
+    // After show, not before: the animation should start on a frame the window
+    // is actually visible for.
+    let _ = popup.emit(SHOWN_EVENT, ());
     Ok(())
 }
 

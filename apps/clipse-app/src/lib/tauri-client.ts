@@ -98,6 +98,17 @@ export function currentWindowLabel(): string {
 
 // --- Events pushed from src-tauri/src/connection.rs ---------------------
 
+/**
+ * The hotkey popup has just been shown.
+ *
+ * Emitted from `src-tauri/src/popup.rs` rather than derived in the webview,
+ * because the webview is hidden between uses instead of destroyed: there is no
+ * mount to hook, and nothing else tells it that it is on screen again.
+ */
+export function onPopupShown(handler: () => void) {
+  return listen<null>("popup:shown", () => handler());
+}
+
 export function onClipAdded(handler: (clip: Clip) => void) {
   return listen<Clip>("clip-added", (e) => handler(e.payload));
 }

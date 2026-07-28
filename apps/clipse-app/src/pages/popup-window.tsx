@@ -14,26 +14,31 @@ import {
   popupKeyReducer,
 } from "../lib/popup-reducer";
 import { usePopupClips } from "../hooks/use-popup-clips";
+import { usePopupMotion } from "../hooks/use-popup-motion";
 import { api } from "../lib/tauri-client";
 import type { Clip } from "../types/ipc";
 import styles from "./popup-window.module.css";
 
-function performEffect(effect: PopupKeyEffect, results: Clip[]) {
+/** `dismiss` owns both the exit animation and the actual hide, so every path
+ * that closes the popup goes through it rather than calling `hidePopup`. */
+function performEffect(
+  effect: PopupKeyEffect,
+  results: Clip[],
+  dismiss: (before?: () => Promise<void>) => Promise<void>,
+) {
   if (effect.type === "paste") {
     const target = results[effect.index];
     if (!target) return;
-    void api
-      .paste(target.id)
-      .catch(() => {})
-      .finally(() => void api.hidePopup());
+    void dismiss(() => api.paste(target.id));
   } else if (effect.type === "close") {
-    void api.hidePopup();
+    void dismiss();
   }
 }
 
 const ROW_HEIGHT = 52;
 
 export function PopupWindow() {
+  const { root, dismiss } = usePopupMotion();
   const { clips, loading, offline, refresh } = usePopupClips();
   const [query, setQuery] = useState("");
   const [keyState, setKeyState] = useState<PopupKeyState>(initialPopupKeyState());
@@ -66,9 +71,9 @@ export function PopupWindow() {
     (action: PopupKeyAction) => {
       const { state, effect } = popupKeyReducer(keyState, action);
       setKeyState(state);
-      performEffect(effect, results);
+      performEffect(effect, results, dismiss);
     },
-    [keyState, results],
+    [keyState, results, dismiss],
   );
 
   const resetForReopen = useCallback(() => {
@@ -110,7 +115,7 @@ export function PopupWindow() {
   }
 
   return (
-    <div className={styles.card} onKeyDown={onKeyDown}>
+    <div className={styles.card} onKeyDown={onKeyDown} ref={root}>
       <div className={styles.searchRow}>
         <SearchBox ref={inputRef} value={query} onChange={setQuery} placeholder="Type to filter…" autoFocus />
       </div>
