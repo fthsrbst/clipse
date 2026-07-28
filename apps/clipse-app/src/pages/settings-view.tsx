@@ -110,6 +110,19 @@ export function SettingsView({ onBack, status }: SettingsViewProps) {
                   onChange={(e) => patch({ device_label: e.target.value })}
                 />
               </Row>
+              {/* Presence, not access. Worth its own row because the thing it
+               * controls is visible to strangers and nothing else in the app
+               * would ever tell you so. */}
+              <Row
+                label="Announce on this network"
+                description="Lets your paired devices find this one again after its address changes. Anyone else on the network can see that this machine runs Clipse, under the label above — they still cannot see or ask for your clipboard. Turn it off to stay quiet; paired devices are then reached at the addresses recorded when you paired."
+              >
+                <ToggleSwitch
+                  checked={draft.announce_on_network}
+                  onChange={(v) => patch({ announce_on_network: v })}
+                  label="Announce on this network"
+                />
+              </Row>
               <Row
                 label="Blob storage quota"
                 description="Large payloads (screenshots, big files) beyond this size evict the oldest unpinned blob first."

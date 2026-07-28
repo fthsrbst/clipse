@@ -263,8 +263,28 @@ pub struct Settings {
     pub blocked_apps: Vec<String>,
     pub detect_secrets: bool,
     pub sync_enabled: bool,
+    /// Announce this device over mDNS so paired devices can find it again
+    /// after an address change.
+    ///
+    /// The announcement is public to the whole local network: anyone on it can
+    /// see that this machine runs Clipse, under this label. It grants nobody
+    /// any access — discovery only refreshes addresses for devices that already
+    /// completed a pairing — but it is presence, and on a shared network some
+    /// people would rather not broadcast it. Turning it off trades automatic
+    /// re-discovery for silence; paired devices are still reached at the
+    /// addresses recorded when they paired.
+    ///
+    /// `serde(default)` so a config file or a peer written before this field
+    /// existed still loads. The IPC codec keeps field names (see `codec.rs`),
+    /// which is what makes adding one safe in both directions.
+    #[serde(default = "announce_by_default")]
+    pub announce_on_network: bool,
     pub start_at_login: bool,
     pub device_label: String,
+}
+
+fn announce_by_default() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -276,6 +296,7 @@ impl Default for Settings {
             blocked_apps: Vec::new(),
             detect_secrets: true,
             sync_enabled: true,
+            announce_on_network: true,
             start_at_login: true,
             device_label: default_device_label(),
         }

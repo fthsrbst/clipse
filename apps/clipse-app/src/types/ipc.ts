@@ -108,6 +108,10 @@ export interface Settings {
   blocked_apps: string[];
   detect_secrets: boolean;
   sync_enabled: boolean;
+  /** mDNS announcement. Off means paired devices are only reachable at the
+   * addresses recorded when they paired — nothing on the network is told this
+   * machine runs Clipse. */
+  announce_on_network: boolean;
   start_at_login: boolean;
   device_label: string;
 }
