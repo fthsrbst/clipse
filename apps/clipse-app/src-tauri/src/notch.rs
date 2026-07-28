@@ -29,7 +29,7 @@ use crate::state::AppState;
 
 /// How many clips the panel shows. Three is what fits under a notch without
 /// the panel becoming a window; the full history is one hotkey away.
-const VISIBLE_CLIPS: usize = 3;
+pub const VISIBLE_CLIPS: u32 = 3;
 
 #[derive(Serialize)]
 struct NotchClip {
@@ -117,7 +117,7 @@ impl Notch {
         let payload: Vec<NotchClip> = clips
             .iter()
             .filter(|clip| !clip.deleted)
-            .take(VISIBLE_CLIPS)
+            .take(VISIBLE_CLIPS as usize)
             .map(|clip| NotchClip {
                 id: clip.id.to_string(),
                 preview: clip.preview.clone(),

@@ -48,11 +48,35 @@ async fn run_loop(app: AppHandle, state: Arc<AppState>) {
                 emit_connection_state(&app, true);
                 backoff = MIN_BACKOFF;
 
+                // The notch needs to know which device is "here" so it can mark
+                // clips that arrived from somewhere else; the daemon is the one
+                // that knows, so it is read once per connection. It exists only
+                // where the panel does — nothing else wants it, and a value
+                // computed for nobody is a warning on every other platform.
+                #[cfg(target_os = "macos")]
+                let mut local_device = String::new();
+
                 if let Some(status) = fetch_status(&state).await {
+                    #[cfg(target_os = "macos")]
+                    {
+                        local_device = status.device.to_string();
+                    }
                     forward_status(&app, &status);
                 }
 
+                #[cfg(target_os = "macos")]
+                notch_refresh(&state, &local_device).await;
+
                 while let Ok(event) = events.next().await {
+                    // The panel shows the head of the history, so it is only
+                    // worth redrawing when the head could have moved.
+                    #[cfg(target_os = "macos")]
+                    if matches!(
+                        &event,
+                        Event::ClipAdded(_) | Event::ClipRemoved(_) | Event::ClipUpdated(_)
+                    ) {
+                        notch_refresh(&state, &local_device).await;
+                    }
                     forward_event(&app, event);
                 }
 
@@ -75,6 +99,36 @@ async fn connect_both(endpoint: &str) -> anyhow::Result<(Client, EventStream)> {
     let evt = Client::connect(endpoint, "clipse-app-events").await?;
     let events = evt.subscribe().await?;
     Ok((cmd, events))
+}
+
+/// Push the current head of the history to the notch panel.
+///
+/// Read from the daemon rather than accumulated here: the panel shows the same
+/// three clips the history window would, and keeping a second copy in this task
+/// would be a second thing to get wrong about deletions and pins.
+#[cfg(target_os = "macos")]
+async fn notch_refresh(state: &Arc<AppState>, local_device: &str) {
+    let Some(notch) = state.notch.get() else {
+        return;
+    };
+
+    let clips = {
+        let mut guard = state.client.lock().await;
+        let Some(client) = guard.as_mut() else {
+            return;
+        };
+        match client
+            .call(Request::History(clipse_ipc::protocol::HistoryQuery::page(
+                crate::notch::VISIBLE_CLIPS,
+            )))
+            .await
+        {
+            Ok(Response::Clips(clips)) => clips,
+            _ => return,
+        }
+    };
+
+    notch.show(&clips, local_device).await;
 }
 
 async fn fetch_status(state: &AppState) -> Option<DaemonStatus> {

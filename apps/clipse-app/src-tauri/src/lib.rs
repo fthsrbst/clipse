@@ -69,6 +69,18 @@ pub fn run() {
             *embedded
                 .lock()
                 .expect("the exit handler is the only other holder") = daemon;
+
+            // The notch panel is a sidecar process, and a missing one is not an
+            // error: it simply is not bundled on every build. The device label
+            // is supplied per push, from the daemon's status, so nothing useful
+            // is known here yet.
+            #[cfg(target_os = "macos")]
+            if let Some(panel) =
+                notch::Notch::spawn(&handle, Arc::clone(&connection_state), String::new())
+            {
+                let _ = connection_state.notch.set(panel);
+            }
+
             connection::spawn(handle.clone(), connection_state, ready);
 
             // Escape is handled in the popup's own JS (it calls the

@@ -10,7 +10,11 @@ use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use clipse_core::Paths;
-use clipse_ipc::protocol::{CaptureMode, Event, HistoryQuery, Request, Response};
+// `CaptureMode` and `HistoryQuery` are only used by the Windows-only
+// `clipboard` module below, so they are imported there rather than here —
+// otherwise every non-Windows build warns, and `-D warnings` turns that into a
+// failure on two thirds of the matrix.
+use clipse_ipc::protocol::{Event, Request, Response};
 use clipse_ipc::{Client, IPC_VERSION};
 use tempfile::TempDir;
 
@@ -121,6 +125,7 @@ async fn a_second_daemon_on_the_same_data_dir_refuses_to_start() {
 mod clipboard {
     use super::*;
 
+    use clipse_ipc::protocol::{CaptureMode, HistoryQuery};
     use windows::Win32::Foundation::{HANDLE, HGLOBAL};
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,

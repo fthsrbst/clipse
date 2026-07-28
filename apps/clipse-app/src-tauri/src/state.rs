@@ -21,6 +21,14 @@ pub struct AppState {
     /// The hotkey currently registered with the OS, so settings updates know
     /// what to unregister before registering the new one.
     pub current_hotkey: SyncMutex<String>,
+    /// The notch panel, once it has been started.
+    ///
+    /// A `OnceLock` because it is set exactly once during setup and read from
+    /// the connection task afterwards: there is nothing to lock for, and the
+    /// sidecar is missing on a machine where it was never bundled, which is a
+    /// normal state rather than an error.
+    #[cfg(target_os = "macos")]
+    pub notch: std::sync::OnceLock<std::sync::Arc<crate::notch::Notch>>,
 }
 
 impl AppState {
@@ -29,6 +37,8 @@ impl AppState {
             endpoint,
             client: AsyncMutex::new(None),
             current_hotkey: SyncMutex::new(initial_hotkey),
+            #[cfg(target_os = "macos")]
+            notch: std::sync::OnceLock::new(),
         }
     }
 }

@@ -107,13 +107,21 @@ mod tests {
         assert_ne!(a, b, "two daemons would fight over one endpoint");
     }
 
+    // Windows only, and not an oversight.
+    //
+    // There the endpoint is a *hash* of the root, so two spellings of one
+    // directory produce two unrelated pipe names and the UI reports "not
+    // running" against a daemon that is running. Everywhere else the endpoint
+    // is a socket file *inside* the root, so both spellings name the same file
+    // and the operating system resolves them for us — the strings differ, the
+    // socket does not, and asserting on the strings would be asserting on
+    // something that never mattered.
+    #[cfg(windows)]
     #[test]
     fn one_directory_spelled_two_ways_gets_one_endpoint() {
         // The daemon takes `--data-dir` and the app takes `CLIPSE_DATA_DIR`;
         // nothing makes the two agree on spelling, and `tauri dev` runs the app
-        // from a different working directory than the daemon. A relative and an
-        // absolute spelling of the same directory must reach the same endpoint,
-        // or the UI reports "not running" against a daemon that is running.
+        // from a different working directory than the daemon.
         let cwd = std::env::current_dir().expect("a working directory");
         let relative = Paths::with_root("./clipse-endpoint-test").ipc_endpoint();
         let absolute = Paths::with_root(cwd.join("clipse-endpoint-test")).ipc_endpoint();
