@@ -1,180 +1,283 @@
-/* Clipse design tokens.
+/* Clipse design tokens — "the eclipse almanac".
  *
- * Two rules when editing:
+ * The reference is a printed observatory logbook: warm uncoated paper, ink
+ * that is never quite black, hairline rules instead of boxes, and a single
+ * amber that stands for the corona. Type carries the hierarchy, so there are
+ * only two faces and almost no rounding — a card with a 14px radius and a drop
+ * shadow is the look this deliberately isn't.
+ *
+ * Four rules when editing:
  *   1. Semantic tokens (--color-*) are what the UI uses. Raw palette values
- *      (--night-*, --amber-*) are only ever referenced from here.
+ *      (--ink-*, --paper-*, --corona-*) are only ever referenced from here.
  *   2. The light theme is a design, not an inversion. Amber at its dark-theme
- *      value fails contrast on white, so light mode has its own accent step. */
+ *      value fails contrast on paper, so light has its own accent step.
+ *   3. Rules, not borders. Structure comes from 1px hairlines and space.
+ *   4. Every duration and easing comes from the motion scale below. A one-off
+ *      `transition: 0.3s ease` is how a set of screens stops feeling like one
+ *      product.
+ */
 
 :root {
-  /* Palette — night */
-  --night-950: #07080D;
-  --night-900: #0B0C13;
-  --night-800: #12141F;
-  --night-700: #1B1E2D;
-  --night-600: #272B3E;
+  /* ---- Palette: ink ------------------------------------------------------
+   * Warm near-blacks. Pure #000 and blue-greys both read as "screen"; these
+   * read as printing ink, which is the point. */
+  --ink-950: #0A0907;
+  --ink-900: #0F0E0B;
+  --ink-850: #141310;
+  --ink-800: #1A1815;
+  --ink-700: #24221D;
+  --ink-600: #302D27;
+  --ink-500: #45413A;
 
-  /* Palette — amber (the corona) */
-  --amber-300: #FFD79B;
-  --amber-400: #FFC46B;
-  --amber-500: #F5A524;
-  --amber-600: #C97A10;
-  --amber-700: #8F5A0A;
+  /* ---- Palette: paper ---------------------------------------------------- */
+  --paper-50: #FDFCF9;
+  --paper-100: #F8F6F0;
+  --paper-200: #F0EDE4;
+  --paper-300: #E4E0D4;
+  --paper-400: #D2CCBC;
+  --paper-500: #B4AC98;
 
-  /* Palette — day */
-  --day-50: #FFFFFF;
-  --day-100: #FAFAFC;
-  --day-200: #F1F2F6;
-  --day-300: #E3E5EC;
-  --day-400: #CBCFDB;
+  /* ---- Palette: corona ---------------------------------------------------
+   * The one saturated hue in the product. Used sparingly and never decoratively:
+   * it marks the live thing, the selected thing, or the thing you just did. */
+  --corona-200: #FFE7C2;
+  --corona-300: #FFD79B;
+  --corona-400: #FFC46B;
+  --corona-500: #F5A524;
+  --corona-600: #C97A10;
+  --corona-700: #8F5A0A;
+  --corona-800: #5E3A06;
 
-  /* Text ramps */
-  --text-primary: #F4F5F8;
-  --text-secondary: #A9AEC2;
-  --text-muted: #6B7189;
+  /* ---- Text ramps -------------------------------------------------------- */
+  --on-ink-primary: #F5F2EA;
+  --on-ink-secondary: #A8A296;
+  --on-ink-muted: #6E685C;
 
-  --ink-primary: #14161F;
-  --ink-secondary: #474D61;
-  --ink-muted: #767C91;
+  --on-paper-primary: #17150F;
+  --on-paper-secondary: #4E4940;
+  --on-paper-muted: #7C7568;
 
-  /* Semantic — dark is the default; the product is designed dark-first. */
-  --color-canvas: var(--night-900);
-  --color-surface: var(--night-800);
-  --color-surface-raised: var(--night-700);
-  --color-surface-hover: var(--night-600);
+  /* ---- Semantic: dark is the default; the product is designed dark-first. */
+  --color-canvas: var(--ink-900);
+  --color-surface: var(--ink-850);
+  --color-surface-raised: var(--ink-800);
+  --color-surface-hover: var(--ink-700);
+  --color-surface-sunken: var(--ink-950);
 
-  --color-ink: var(--text-primary);
-  --color-ink-secondary: var(--text-secondary);
-  --color-ink-muted: var(--text-muted);
+  --color-ink: var(--on-ink-primary);
+  --color-ink-secondary: var(--on-ink-secondary);
+  --color-ink-muted: var(--on-ink-muted);
 
-  --color-border: #232739;
-  --color-border-strong: #333853;
+  /* A rule is a hairline, not a container edge. --rule-strong is for the few
+   * places a division has to be read as structural. */
+  --color-rule: #262320;
+  --color-rule-strong: #383430;
+  --color-border: var(--color-rule);
+  --color-border-strong: var(--color-rule-strong);
 
-  --color-accent: var(--amber-500);
-  /* Accent used for text and small glyphs, where contrast must hold. */
-  --color-accent-ink: var(--amber-400);
-  --color-accent-soft: rgba(245, 165, 36, 0.14);
-  --corona-gradient: linear-gradient(135deg, var(--amber-400), var(--amber-600));
+  --color-accent: var(--corona-500);
+  /* Accent for text and small glyphs, where contrast must hold. */
+  --color-accent-ink: var(--corona-400);
+  --color-accent-soft: rgba(245, 165, 36, 0.13);
+  --color-accent-line: rgba(245, 165, 36, 0.32);
+  --corona-gradient: linear-gradient(135deg, var(--corona-300), var(--corona-600));
 
-  --color-danger: #F2666A;
-  --color-success: #5FD08A;
+  --color-danger: #E8615C;
+  --color-success: #6FBF8B;
 
-  --shadow-popup: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-raised: 0 2px 12px rgba(0, 0, 0, 0.35);
+  /* Shadows are almost absent by design; paper does not float. The popup is
+   * the exception because it genuinely hovers over another application. */
+  --shadow-popup:
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
 
-  /* Motion */
-  --ease-spring: cubic-bezier(.22, 1, .36, 1);
-  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  /* ---- Type --------------------------------------------------------------
+   * Two faces, no sans. Instrument Serif is the voice — high contrast, narrow,
+   * unmistakably editorial — and IBM Plex Mono is everything else, because in
+   * a clipboard manager almost every string on screen is somebody's code,
+   * path, URL or token, and a proportional face lies about all of them.
+   *
+   * --font-sans is kept as an alias so nothing referencing it breaks; it
+   * resolves to the mono on purpose. */
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+  --font-sans: var(--font-mono);
+
+  --type-2xs: 0.6875rem;
+  --type-xs: 0.75rem;
+  --type-sm: 0.8125rem;
+  --type-base: 0.875rem;
+  --type-md: 1rem;
+  --type-lg: 1.25rem;
+  --type-xl: 1.625rem;
+  --type-2xl: 2.25rem;
+  --type-3xl: 3.25rem;
+  --type-4xl: 4.5rem;
+
+  --leading-tight: 1.05;
+  --leading-snug: 1.3;
+  --leading-normal: 1.55;
+  --leading-loose: 1.7;
+
+  /* Mono needs to tighten as it grows and open up when it is set small and
+   * uppercase — that second value is the marginalia label throughout. */
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-label: 0.16em;
+  --tracking-wide: 0.04em;
+
+  /* ---- Motion ------------------------------------------------------------
+   * One scale, used everywhere.
+   *   instant  a state flip the eye should not have to wait for
+   *   fast     hover, focus, small colour changes
+   *   base     things entering or leaving in place
+   *   slow     a whole panel or a window changing what it is
+   *   stagger  the gap between successive items in a reveal
+   *
+   * --ease-exit is deliberately not --ease-out reversed: leaving should feel
+   * decided, not bouncy, or dismissing something looks like a mistake. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.22, 1.4, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
+
   --duration-instant: 90ms;
-  --duration-fast: 150ms;
-  --duration-base: 220ms;
+  --duration-fast: 160ms;
+  --duration-base: 260ms;
+  --duration-slow: 480ms;
+  --duration-glacial: 900ms;
+  --stagger: 34ms;
 
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  /* ---- Geometry ----------------------------------------------------------
+   * Near-square. Print does not have rounded corners, and the little that
+   * remains is there to keep focus rings from looking sharp enough to cut. */
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
   --radius-pill: 999px;
 
-  /* Type */
-  --font-sans: "Inter", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+  --rule: 1px solid var(--color-rule);
+  --rule-strong: 1px solid var(--color-rule-strong);
 
-  --type-xs: 0.75rem;
-  --type-sm: 0.875rem;
-  --type-base: 1rem;
-  --type-md: 1.125rem;
-  --type-lg: 1.25rem;
-  --type-xl: 1.5rem;
-  --type-2xl: 2rem;
-  --type-3xl: 2.5rem;
+  /* The marginalia column: section numerals and labels sit here, content
+   * starts after it. This one measurement is what makes the layout read as a
+   * page rather than a form. */
+  --margin-column: 4.5rem;
+  --gutter: 1.75rem;
 
-  --leading-tight: 1.15;
-  --leading-snug: 1.35;
-  --leading-normal: 1.5;
-
-  --tracking-tight: -0.011em;
-  --tracking-wide: 0.04em;
+  /* Paper grain. A single inline SVG turbulence, tuned low enough to be felt
+   * rather than seen; without it large flat areas look like a screenshot of a
+   * design tool. */
+  --grain-opacity: 0.028;
 }
 
 /* Light theme.
  *
- * Not an inversion: the canvas is a hair cooler than the surfaces so cards sit
- * *above* the page rather than below it, and the accent drops two steps
- * because --amber-500 on white is about 2.5:1 — fine for a filled button,
- * nowhere near enough for text. */
+ * Warm uncoated stock, not white. The accent drops two steps because
+ * --corona-500 on paper is about 2.4:1 — fine behind a filled button, nowhere
+ * near enough for text. */
 @media (prefers-color-scheme: light) {
   :root {
-    --color-canvas: var(--day-200);
-    --color-surface: var(--day-50);
-    --color-surface-raised: var(--day-50);
-    --color-surface-hover: var(--day-100);
+    --color-canvas: var(--paper-100);
+    --color-surface: var(--paper-50);
+    --color-surface-raised: var(--paper-50);
+    --color-surface-hover: var(--paper-200);
+    --color-surface-sunken: var(--paper-200);
 
-    --color-ink: var(--ink-primary);
-    --color-ink-secondary: var(--ink-secondary);
-    --color-ink-muted: var(--ink-muted);
+    --color-ink: var(--on-paper-primary);
+    --color-ink-secondary: var(--on-paper-secondary);
+    --color-ink-muted: var(--on-paper-muted);
 
-    --color-border: var(--day-300);
-    --color-border-strong: var(--day-400);
+    --color-rule: #DFDACE;
+    --color-rule-strong: #C7C0B0;
+    --color-border: var(--color-rule);
+    --color-border-strong: var(--color-rule-strong);
 
-    --color-accent: var(--amber-600);
-    --color-accent-ink: var(--amber-700);
-    --color-accent-soft: rgba(201, 122, 16, 0.12);
-    --corona-gradient: linear-gradient(135deg, var(--amber-500), var(--amber-700));
+    --color-accent: var(--corona-600);
+    --color-accent-ink: var(--corona-700);
+    --color-accent-soft: rgba(201, 122, 16, 0.11);
+    --color-accent-line: rgba(201, 122, 16, 0.3);
+    --corona-gradient: linear-gradient(135deg, var(--corona-500), var(--corona-700));
 
-    --color-danger: #C0323A;
+    --color-danger: #B4322E;
     --color-success: #1F7A4C;
 
-    --shadow-popup: 0 16px 40px rgba(20, 22, 31, 0.16), 0 2px 6px rgba(20, 22, 31, 0.08);
-    --shadow-raised: 0 1px 3px rgba(20, 22, 31, 0.1);
+    --shadow-popup:
+      0 24px 56px rgba(23, 21, 15, 0.18),
+      0 2px 8px rgba(23, 21, 15, 0.1);
+    --shadow-raised: 0 1px 2px rgba(23, 21, 15, 0.08);
+
+    --grain-opacity: 0.04;
   }
 }
 
 /* The in-app theme toggle stamps data-theme on the root; it must beat the
  * media query in both directions, so both are spelled out explicitly. */
 :root[data-theme="dark"] {
-  --color-canvas: var(--night-900);
-  --color-surface: var(--night-800);
-  --color-surface-raised: var(--night-700);
-  --color-surface-hover: var(--night-600);
-  --color-ink: var(--text-primary);
-  --color-ink-secondary: var(--text-secondary);
-  --color-ink-muted: var(--text-muted);
-  --color-border: #232739;
-  --color-border-strong: #333853;
-  --color-accent: var(--amber-500);
-  --color-accent-ink: var(--amber-400);
-  --color-accent-soft: rgba(245, 165, 36, 0.14);
-  --corona-gradient: linear-gradient(135deg, var(--amber-400), var(--amber-600));
-  --color-danger: #F2666A;
-  --color-success: #5FD08A;
-  --shadow-popup: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-raised: 0 2px 12px rgba(0, 0, 0, 0.35);
+  --color-canvas: var(--ink-900);
+  --color-surface: var(--ink-850);
+  --color-surface-raised: var(--ink-800);
+  --color-surface-hover: var(--ink-700);
+  --color-surface-sunken: var(--ink-950);
+  --color-ink: var(--on-ink-primary);
+  --color-ink-secondary: var(--on-ink-secondary);
+  --color-ink-muted: var(--on-ink-muted);
+  --color-rule: #262320;
+  --color-rule-strong: #383430;
+  --color-border: var(--color-rule);
+  --color-border-strong: var(--color-rule-strong);
+  --color-accent: var(--corona-500);
+  --color-accent-ink: var(--corona-400);
+  --color-accent-soft: rgba(245, 165, 36, 0.13);
+  --color-accent-line: rgba(245, 165, 36, 0.32);
+  --corona-gradient: linear-gradient(135deg, var(--corona-300), var(--corona-600));
+  --color-danger: #E8615C;
+  --color-success: #6FBF8B;
+  --shadow-popup:
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --grain-opacity: 0.028;
 }
 
 :root[data-theme="light"] {
-  --color-canvas: var(--day-200);
-  --color-surface: var(--day-50);
-  --color-surface-raised: var(--day-50);
-  --color-surface-hover: var(--day-100);
-  --color-ink: var(--ink-primary);
-  --color-ink-secondary: var(--ink-secondary);
-  --color-ink-muted: var(--ink-muted);
-  --color-border: var(--day-300);
-  --color-border-strong: var(--day-400);
-  --color-accent: var(--amber-600);
-  --color-accent-ink: var(--amber-700);
-  --color-accent-soft: rgba(201, 122, 16, 0.12);
-  --corona-gradient: linear-gradient(135deg, var(--amber-500), var(--amber-700));
-  --color-danger: #C0323A;
+  --color-canvas: var(--paper-100);
+  --color-surface: var(--paper-50);
+  --color-surface-raised: var(--paper-50);
+  --color-surface-hover: var(--paper-200);
+  --color-surface-sunken: var(--paper-200);
+  --color-ink: var(--on-paper-primary);
+  --color-ink-secondary: var(--on-paper-secondary);
+  --color-ink-muted: var(--on-paper-muted);
+  --color-rule: #DFDACE;
+  --color-rule-strong: #C7C0B0;
+  --color-border: var(--color-rule);
+  --color-border-strong: var(--color-rule-strong);
+  --color-accent: var(--corona-600);
+  --color-accent-ink: var(--corona-700);
+  --color-accent-soft: rgba(201, 122, 16, 0.11);
+  --color-accent-line: rgba(201, 122, 16, 0.3);
+  --corona-gradient: linear-gradient(135deg, var(--corona-500), var(--corona-700));
+  --color-danger: #B4322E;
   --color-success: #1F7A4C;
-  --shadow-popup: 0 16px 40px rgba(20, 22, 31, 0.16), 0 2px 6px rgba(20, 22, 31, 0.08);
-  --shadow-raised: 0 1px 3px rgba(20, 22, 31, 0.1);
+  --shadow-popup:
+    0 24px 56px rgba(23, 21, 15, 0.18),
+    0 2px 8px rgba(23, 21, 15, 0.1);
+  --shadow-raised: 0 1px 2px rgba(23, 21, 15, 0.08);
+  --grain-opacity: 0.04;
 }
 
+/* Someone who has asked their system to stop moving things means it. Durations
+ * collapse to zero rather than being merely shortened, and the stagger goes
+ * with them so lists appear whole instead of dealing themselves out. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-instant: 0ms;
     --duration-fast: 0ms;
     --duration-base: 0ms;
+    --duration-slow: 0ms;
+    --duration-glacial: 0ms;
+    --stagger: 0ms;
   }
 }
