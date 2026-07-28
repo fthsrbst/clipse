@@ -24,6 +24,11 @@ Thumbs.db
 *.db-shm
 *.db-wal
 
+# Playwright output. Traces of a failed run can contain screenshots of whatever
+# was on the clipboard at the time, which is the last thing to publish.
+test-results
+playwright-report
+
 # Signing material
 *.p12
 *.pfx
