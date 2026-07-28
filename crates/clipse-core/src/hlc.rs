@@ -153,18 +153,26 @@ fn system_now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+    use std::cell::Cell;
 
     use super::*;
 
-    static FAKE_NOW: AtomicU64 = AtomicU64::new(1_000);
+    // `HlcClock::with_clock` takes a bare `fn() -> u64`, which cannot capture
+    // per-instance state, so the fake clock lives outside the clock. It is
+    // thread-local rather than process-wide because `cargo test` runs each
+    // `#[test]` on its own thread: one shared clock meant a test that advanced
+    // time moved it under a sibling mid-assertion, and the suite failed at
+    // random under load.
+    thread_local! {
+        static FAKE_NOW: Cell<u64> = const { Cell::new(1_000) };
+    }
 
     fn fake_now() -> u64 {
-        FAKE_NOW.load(AtomicOrdering::SeqCst)
+        FAKE_NOW.get()
     }
 
     fn set_now(ms: u64) {
-        FAKE_NOW.store(ms, AtomicOrdering::SeqCst);
+        FAKE_NOW.set(ms);
     }
 
     fn clock() -> HlcClock {
