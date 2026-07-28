@@ -209,6 +209,21 @@ fn luhn_valid(digits: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// Join the pieces of a synthetic credential.
+    ///
+    /// The fixtures below have to be shaped exactly like the real thing or they
+    /// would not exercise the detectors — which means a secret scanner reading
+    /// this file cannot tell them from live credentials, and GitHub's push
+    /// protection rejects the push. (It was right to: `sk_live_4eC39Hq…` is
+    /// Stripe's own documentation sample, and looks no different from a leak.)
+    ///
+    /// Assembling them at runtime keeps the complete string out of the source
+    /// while the detector still sees all of it. Do not "simplify" this back
+    /// into literals.
+    fn synthetic(parts: &[&str]) -> String {
+        parts.concat()
+    }
+
     // --- true positives: each documented shape must be caught -------------
 
     #[test]
@@ -244,18 +259,18 @@ mod tests {
 
     #[test]
     fn detects_slack_token() {
-        assert_eq!(
-            detect_secret(&["xoxb", "-123456789012-1234567890123-abcdefghijklmnopqrstuvwx"].concat()),
-            Some(SecretKind::SlackToken)
-        );
+        let token = synthetic(&[
+            "xoxb",
+            "-123456789012-1234567890123-",
+            "abcdefghijklmnopqrstuvwx",
+        ]);
+        assert_eq!(detect_secret(&token), Some(SecretKind::SlackToken));
     }
 
     #[test]
     fn detects_stripe_key() {
-        assert_eq!(
-            detect_secret(&["sk", "_live_4eC39HqLyjWDarjtT1zdp7dc"].concat()),
-            Some(SecretKind::StripeKey)
-        );
+        let key = synthetic(&["sk", "_live_", "4eC39HqLyjWDarjtT1zdp7dc"]);
+        assert_eq!(detect_secret(&key), Some(SecretKind::StripeKey));
     }
 
     #[test]
