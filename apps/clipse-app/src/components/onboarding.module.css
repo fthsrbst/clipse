@@ -1,0 +1,277 @@
+/* First run.
+ *
+ * Two columns that are deliberately not equal: the eclipse gets the larger,
+ * quieter half and the type gets the smaller, denser one, so the page reads
+ * like a spread rather than a dialog. Everything is set on a baseline of
+ * hairlines — there is not a single filled card here. */
+
+.root {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  height: 100%;
+  background: var(--color-canvas);
+  overflow: hidden;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--gutter);
+  border-right: var(--rule);
+  background:
+    radial-gradient(120% 90% at 50% 50%, var(--color-accent-soft), transparent 62%),
+    var(--color-surface-sunken);
+  overflow: hidden;
+}
+
+.column {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  padding: var(--gutter);
+}
+
+/* --- masthead ---------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 0.9rem;
+  border-bottom: var(--rule);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-ink);
+}
+
+.skip {
+  border: 0;
+  background: none;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  font-size: var(--type-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.skip:hover {
+  color: var(--color-ink);
+}
+
+/* --- copy --------------------------------------------------------------- */
+
+.copy {
+  align-self: center;
+  padding: 2rem 0;
+  min-width: 0;
+}
+
+/* One orchestrated entrance per step, staggered down the column. Each element
+ * carries its own delay rather than the container animating as a block, which
+ * is what makes it read as a page being set rather than a panel sliding. */
+.copy > * {
+  animation: rise var(--duration-slow) var(--ease-out) both;
+}
+
+.copy > *:nth-child(1) { animation-delay: 0ms; }
+.copy > *:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
+.copy > *:nth-child(3) { animation-delay: calc(var(--stagger) * 2.4); }
+.copy > *:nth-child(4) { animation-delay: calc(var(--stagger) * 3.8); }
+.copy > *:nth-child(5) { animation-delay: calc(var(--stagger) * 5); }
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.65rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0 0 1.4rem;
+  font-size: var(--type-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink-muted);
+}
+
+/* The section numeral, set in the accent and rendered as marginalia. The rule
+ * running off its right edge is what ties the label to the column. */
+.index {
+  color: var(--color-accent-ink);
+}
+
+.kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-rule);
+}
+
+.title {
+  margin: 0 0 1.25rem;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(1.9rem, 4.4vw, var(--type-3xl));
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-ink);
+  text-wrap: balance;
+}
+
+.body {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--type-base);
+  line-height: var(--leading-loose);
+  color: var(--color-ink-secondary);
+}
+
+/* The aside is the footnote voice: smaller, indented behind a rule, and
+ * carrying the detail someone will want on a second read. */
+.aside {
+  margin: 1.4rem 0 0;
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-accent-line);
+  max-width: 40ch;
+  font-size: var(--type-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-ink-muted);
+}
+
+.hotkey {
+  margin: 1.75rem 0 0;
+}
+
+.kbd {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border: var(--rule-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: var(--type-base);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-accent-ink);
+  box-shadow: inset 0 -2px 0 var(--color-rule);
+}
+
+/* --- footer ------------------------------------------------------------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: var(--rule);
+}
+
+/* Progress as a row of rules, not dots: a printed page counts its sections in
+ * the margin, and this is the same gesture. */
+.ticks {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tick {
+  width: 1.6rem;
+  height: 2px;
+  background: var(--color-rule-strong);
+  transition:
+    background var(--duration-base) var(--ease-out),
+    width var(--duration-base) var(--ease-out);
+}
+
+.tick[data-state="current"] {
+  width: 2.6rem;
+  background: var(--color-accent);
+}
+
+.tick[data-state="past"] {
+  background: var(--color-accent-line);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.back,
+.next {
+  border: var(--rule-strong);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 1.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-instant) var(--ease-out);
+}
+
+.back {
+  background: transparent;
+  color: var(--color-ink-secondary);
+}
+
+.back:hover {
+  border-color: var(--color-ink-muted);
+  color: var(--color-ink);
+}
+
+.next {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--ink-950);
+}
+
+.next:hover {
+  background: var(--color-accent-ink);
+  border-color: var(--color-accent-ink);
+}
+
+.back:active,
+.next:active {
+  transform: translateY(1px);
+}
+
+/* Below this the two columns stop being a spread and start being a squeeze;
+ * the artwork yields first because the words carry the meaning. */
+@media (max-width: 720px) {
+  .root {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 0.8fr) auto;
+  }
+
+  .stage {
+    border-right: 0;
+    border-bottom: var(--rule);
+  }
+}

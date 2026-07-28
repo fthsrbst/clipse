@@ -146,6 +146,7 @@ export const FIXTURE_SETTINGS: Settings = {
   blocked_apps: [],
   detect_secrets: true,
   sync_enabled: true,
+  announce_on_network: true,
   start_at_login: true,
   device_label: "MacBook Pro",
 };

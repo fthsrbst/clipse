@@ -7,6 +7,16 @@ export interface TauriStubOptions {
   /** Which Tauri window this page should present itself as — drives
    * `App.tsx`'s choice between the History window and the popup. */
   windowLabel: "main" | "popup";
+  /**
+   * Whether this page should behave as a first run.
+   *
+   * Defaults to "already introduced". Every browser context starts with an
+   * empty localStorage, so without this the onboarding would stand in front of
+   * every test that is actually about the history window — and a test suite
+   * that has to click through a welcome sequence to reach its subject stops
+   * testing the subject.
+   */
+  firstRun?: boolean;
 }
 
 /**
@@ -33,6 +43,17 @@ export function installTauriStub(options: TauriStubOptions): void {
   win.__pasteCalls = [];
   win.__applyCalls = [];
   win.__hidePopupCalls = 0;
+
+  // Must match SEEN_KEY in src/components/onboarding.tsx.
+  if (!options.firstRun) {
+    try {
+      window.localStorage.setItem("clipse.onboarding.seen.v1", "yes");
+    } catch {
+      /* A context that cannot store it will show the introduction; the test
+       * asserting on the history window will then fail loudly, which is the
+       * right outcome for a broken fixture. */
+    }
+  }
 
   let clips = options.clips.slice();
   let settings = { ...options.settings };
