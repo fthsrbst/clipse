@@ -137,7 +137,13 @@ async fn notch_refresh(state: &Arc<AppState>, local_device: &str) {
         }
     };
 
-    notch.show(&clips, local_device).await;
+    // An empty history has nothing to decorate the notch with, and a panel
+    // showing three blank rows is worse than no panel: it retracts instead.
+    if clips.iter().all(|clip| clip.deleted) {
+        notch.hide().await;
+    } else {
+        notch.show(&clips, local_device).await;
+    }
 }
 
 async fn fetch_status(state: &AppState) -> Option<DaemonStatus> {

@@ -14,7 +14,8 @@
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
@@ -34,7 +35,20 @@ pub enum TailnetError {
 
     #[error("could not understand tailscale's output: {0}")]
     Parse(#[from] serde_json::Error),
+
+    #[error("tailscale did not answer within {}s", QUERY_TIMEOUT.as_secs())]
+    TimedOut,
 }
+
+/// How long `tailscale status` gets before it is abandoned.
+///
+/// This is a local socket query and should take milliseconds. It is bounded
+/// because it is not always local and not always a query: when the Tailscale
+/// backend is wedged — reconnecting, or stuck in `NoState` — the CLI can block
+/// indefinitely, and this call sits on the daemon's startup path. An unbounded
+/// wait there means a third-party service having a bad day stops Clipse from
+/// starting at all, and the user is simply told the app is not running.
+const QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TailnetPeer {
@@ -110,15 +124,46 @@ impl TailnetStatus {
     /// `spawn_blocking`; it shells out and can take a moment on a cold start.
     pub fn query() -> Result<Self, TailnetError> {
         let exe = tailscale_path().ok_or(TailnetError::NotInstalled)?;
-        let output = Command::new(exe).args(["status", "--json"]).output()?;
+        let mut child = Command::new(exe)
+            .args(["status", "--json"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
 
-        if !output.status.success() {
+        // Drained on its own thread. A child whose pipe fills up blocks on the
+        // write, so polling for exit without reading would deadlock on exactly
+        // the large outputs — a tailnet with many peers — that matter most.
+        let mut stdout = child.stdout.take().expect("stdout was piped");
+        let reader = std::thread::spawn(move || {
+            let mut buffer = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut stdout, &mut buffer);
+            buffer
+        });
+
+        let deadline = Instant::now() + QUERY_TIMEOUT;
+        let exit = loop {
+            match child.try_wait()? {
+                Some(status) => break status,
+                None if Instant::now() >= deadline => {
+                    // Killed rather than left running: a wedged CLI would
+                    // otherwise accumulate one stuck process per query.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(TailnetError::TimedOut);
+                }
+                None => std::thread::sleep(Duration::from_millis(20)),
+            }
+        };
+
+        if !exit.success() {
             return Err(TailnetError::Failed {
-                status: output.status.to_string(),
+                status: exit.to_string(),
             });
         }
 
-        let status = Self::parse(&String::from_utf8_lossy(&output.stdout))?;
+        let bytes = reader.join().unwrap_or_default();
+        let status = Self::parse(&String::from_utf8_lossy(&bytes))?;
         if !status.is_running() {
             return Err(TailnetError::NotRunning {
                 state: status.backend_state,
