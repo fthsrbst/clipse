@@ -191,3 +191,47 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* --- colophon ------------------------------------------------------------
+ * Who made this and where to read it. Set quiet: it is the last thing on the
+ * page and it should feel like a signature, not a call to action. */
+.colophon {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.colophonTitle {
+  margin: 0 0 0.3rem;
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-size: var(--type-lg);
+  letter-spacing: var(--tracking-crushed);
+  color: var(--color-ink);
+}
+
+.colophonLine {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  color: var(--color-ink-muted);
+}
+
+.colophonLink {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  color: var(--color-accent-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-accent-line);
+  padding-bottom: 2px;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.colophonLink:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}

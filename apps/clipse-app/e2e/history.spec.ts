@@ -19,8 +19,12 @@ test("history window renders every fixture clip", async ({ page }) => {
   await expect(page.getByText("Grocery list: milk, eggs, bread")).toBeVisible();
 });
 
-test("the footer reports the daemon's clip count", async ({ page }) => {
-  await expect(page.getByText(`${FIXTURE_CLIPS.length} clips`)).toBeVisible();
+// The count lives in the masthead now, set as display type, with the noun
+// beside it rather than in the same string — so it is two elements to assert
+// on instead of one phrase.
+test("the masthead reports the clip count", async ({ page }) => {
+  await expect(page.getByText(String(FIXTURE_CLIPS.length), { exact: true })).toBeVisible();
+  await expect(page.getByText("clips", { exact: true })).toBeVisible();
 });
 
 test("search narrows the list to matching clips", async ({ page }) => {

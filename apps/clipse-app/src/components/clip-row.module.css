@@ -1,3 +1,6 @@
+/* A ruled row with a red marker on its leading edge, rather than a highlighted
+ * band. Filling the row means the preview text has to survive two backgrounds;
+ * the marker says the same thing and leaves the words alone. */
 .row {
   position: absolute;
   left: 0;
@@ -5,20 +8,46 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 14px;
+  padding: 0 1.25rem;
   height: 100%;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-rule);
   cursor: pointer;
   background: transparent;
-  transition: background-color var(--duration-instant) var(--ease-out);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    padding-left var(--duration-base) var(--ease-out);
+}
+
+.row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-accent);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--duration-base) var(--ease-out);
 }
 
 .row:hover {
-  background: var(--color-surface-hover);
+  background: var(--color-surface);
+  /* The nudge is small enough to feel like weight shifting rather than the
+   * layout moving. */
+  padding-left: 1.5rem;
+}
+
+.row:hover::before {
+  transform: scaleY(0.55);
 }
 
 .row.selected {
-  background: var(--color-accent-soft);
+  background: var(--color-surface);
+}
+
+.row.selected::before {
+  transform: scaleY(1);
 }
 
 .row.compact {
@@ -81,7 +110,10 @@
 .preview {
   margin: 0;
   color: var(--color-ink);
-  font-size: var(--type-sm);
+  font-family: var(--font-mono);
+  font-size: var(--type-base);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -90,9 +122,12 @@
 .meta {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 0.45rem;
   color: var(--color-ink-muted);
-  font-size: var(--type-xs);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
 }
 
 .dot {

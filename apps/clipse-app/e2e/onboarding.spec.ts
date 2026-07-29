@@ -32,10 +32,10 @@ test("Next walks forward through every screen and ends on the history", async ({
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("heading", { name: "Your devices, and nobody else's." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your devices. Nobody else's." })).toBeVisible();
 
   await page.getByRole("button", { name: "Next" }).click();
-  await expect(page.getByRole("heading", { name: "One shortcut, anywhere." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "One shortcut. Anywhere." })).toBeVisible();
 
   // The last step advertises the real hotkey, humanised — not the stored
   // `CmdOrCtrl+…` accelerator.

@@ -1,35 +1,56 @@
+/* Tracked mono labels on a rule, not a segmented control.
+ *
+ * The active one is marked by a red rule under it and nothing else — no pill,
+ * no fill. In a palette with exactly one colour, "the red thing is the selected
+ * thing" is a rule the whole interface can be read by. */
 .tabs {
   display: flex;
-  gap: 2px;
-  padding: 3px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  gap: 1.15rem;
+  align-items: center;
   width: fit-content;
 }
 
 .tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 0.4rem;
+  padding: 0.4rem 0 0.45rem;
   border: none;
-  border-radius: calc(var(--radius-md) - 3px);
   background: transparent;
-  color: var(--color-ink-secondary);
-  font: inherit;
-  font-size: var(--type-xs);
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
   cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+/* The underline is drawn at zero width and scaled in, so switching filters
+ * reads as the mark travelling rather than blinking on and off. */
+.tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--color-accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--duration-base) var(--ease-out);
 }
 
 .tab:hover {
   color: var(--color-ink);
-  background: var(--color-surface-hover);
 }
 
 .tab.active {
-  color: var(--color-accent-ink);
-  background: var(--color-accent-soft);
+  color: var(--color-ink);
+}
+
+.tab.active::after {
+  transform: scaleX(1);
 }

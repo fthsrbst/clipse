@@ -1,52 +1,83 @@
 /* First run.
  *
- * Two columns that are deliberately not equal: the eclipse gets the larger,
- * quieter half and the type gets the smaller, denser one, so the page reads
- * like a spread rather than a dialog. Everything is set on a baseline of
- * hairlines — there is not a single filled card here. */
+ * No columns. The eclipse is the full bleed of the window and the text is a
+ * block that lands somewhere different on every step — bottom left, then top
+ * right, then mid left, then bottom right. A reader's eye has to travel, and
+ * the sequence never resolves into a template you can stop looking at.
+ *
+ * Everything is absolutely positioned against the window rather than laid out
+ * in a grid, on purpose: a grid would immediately reintroduce the symmetry
+ * this is trying to avoid.
+ */
 
 .root {
-  display: grid;
-  grid-template-columns: 1.05fr 1fr;
+  position: relative;
   height: 100%;
+  overflow: hidden;
   background: var(--color-canvas);
-  overflow: hidden;
 }
 
-.stage {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding: var(--gutter);
-  border-right: var(--rule);
+.field {
+  position: absolute;
+  inset: -14%;
+  z-index: 0;
+  opacity: 0.34;
+  transition: transform var(--duration-glacial) var(--ease-inout);
+  will-change: transform;
+}
+
+/* Leaning away from the text. The distances are large enough to actually clear
+ * the copy block and small enough that the disc never leaves the window. */
+.field[data-away-from="bottom-left"] {
+  transform: translate(11%, -9%);
+}
+
+.field[data-away-from="top-right"] {
+  transform: translate(-11%, 9%);
+}
+
+.field[data-away-from="mid-left"] {
+  transform: translate(14%, 0);
+}
+
+.field[data-away-from="bottom-right"] {
+  transform: translate(-11%, -9%);
+}
+
+/* Two jobs: pull the frame edges down so the chrome always has contrast, and
+ * lay a soft scrim under the reading area so body copy never has to compete
+ * with a field of punctuation. */
+.vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
   background:
-    radial-gradient(120% 90% at 50% 50%, var(--color-accent-soft), transparent 62%),
-    var(--color-surface-sunken);
-  overflow: hidden;
+    radial-gradient(90% 70% at 50% 50%, transparent 20%, rgba(0, 8, 6, 0.78) 100%),
+    linear-gradient(to top, rgba(0, 8, 6, 0.92), transparent 55%);
 }
 
-.column {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  min-width: 0;
-  padding: var(--gutter);
-}
-
-/* --- masthead ---------------------------------------------------------- */
+/* --- chrome ------------------------------------------------------------- */
 
 .masthead {
+  position: absolute;
+  z-index: 3;
+  top: var(--gutter);
+  left: var(--gutter);
+  right: var(--gutter);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding-bottom: 0.9rem;
-  border-bottom: var(--rule);
+  /* The chrome sits over live artwork, so it carries its own contrast rather
+   * than relying on whatever happens to be behind it this frame. */
+  text-shadow: 0 1px 12px rgba(0, 8, 6, 0.95);
 }
 
 .wordmark {
   font-family: var(--font-display);
+  font-weight: var(--weight-display);
   font-size: var(--type-lg);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: var(--tracking-crushed);
   color: var(--color-ink);
 }
 
@@ -55,101 +86,157 @@
   background: none;
   padding: 0.2rem 0;
   cursor: pointer;
+  font-family: var(--font-mono);
   font-size: var(--type-2xs);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--color-ink-muted);
+  color: var(--color-ink-secondary);
   transition: color var(--duration-fast) var(--ease-out);
 }
 
 .skip:hover {
-  color: var(--color-ink);
+  color: var(--color-accent);
 }
 
-/* --- copy --------------------------------------------------------------- */
+/* The spine: step numeral running up the left edge, the way a page number sits
+ * on the fore-edge of a book rather than in the text block. */
+.spine {
+  position: absolute;
+  z-index: 3;
+  left: calc(var(--gutter) - 0.15rem);
+  top: 50%;
+  /* `vertical-rl` with no rotation: WebView2 does not implement `sideways-lr`
+   * and silently falls back, which flips the numerals. Top-to-bottom reads
+   * correctly here anyway — current step above the total, like a page number
+   * over a count. */
+  writing-mode: vertical-rl;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-label);
+}
 
+.spineIndex {
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.spineRule {
+  width: 1px;
+  height: 2.5rem;
+  background: var(--color-rule-strong);
+}
+
+.spineTotal {
+  color: var(--color-ink-muted);
+}
+
+/* --- the travelling text block ------------------------------------------- */
+
+/* A local scrim, drawn from the block itself rather than positioned separately,
+ * so it always sits exactly where the words are however the anchor moves. */
 .copy {
-  align-self: center;
-  padding: 2rem 0;
-  min-width: 0;
+  position: absolute;
+  z-index: 2;
+  max-width: min(46ch, 58%);
 }
 
-/* One orchestrated entrance per step, staggered down the column. Each element
- * carries its own delay rather than the container animating as a block, which
- * is what makes it read as a page being set rather than a panel sliding. */
-.copy > * {
-  animation: rise var(--duration-slow) var(--ease-out) both;
+.copy::before {
+  content: "";
+  position: absolute;
+  inset: -2.5rem -3.5rem;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    70% 60% at 50% 50%,
+    rgba(0, 8, 6, 0.94),
+    rgba(0, 8, 6, 0.62) 55%,
+    transparent 100%
+  );
 }
 
-.copy > *:nth-child(1) { animation-delay: 0ms; }
-.copy > *:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
-.copy > *:nth-child(3) { animation-delay: calc(var(--stagger) * 2.4); }
-.copy > *:nth-child(4) { animation-delay: calc(var(--stagger) * 3.8); }
-.copy > *:nth-child(5) { animation-delay: calc(var(--stagger) * 5); }
+.copy[data-anchor="bottom-left"] {
+  left: calc(var(--gutter) + 2.75rem);
+  bottom: calc(var(--gutter) + 4.5rem);
+}
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(0.65rem);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+.copy[data-anchor="top-right"] {
+  right: var(--gutter);
+  top: calc(var(--gutter) + 4rem);
+  text-align: right;
+}
+
+.copy[data-anchor="mid-left"] {
+  left: calc(var(--gutter) + 2.75rem);
+  top: 46%;
+  transform: translateY(-50%);
+}
+
+.copy[data-anchor="bottom-right"] {
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + 4.5rem);
+  text-align: right;
+}
+
+/* Right-anchored steps flip their internal alignment too, or the ragged edge
+ * points the wrong way and the block stops feeling deliberate. */
+.copy[data-anchor="top-right"] .aside,
+.copy[data-anchor="bottom-right"] .aside {
+  border-left: 0;
+  border-right: 2px solid var(--color-accent-line);
+  padding-left: 0;
+  padding-right: 1rem;
+  margin-left: auto;
 }
 
 .kicker {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  margin: 0 0 1.4rem;
+  margin: 0 0 1rem;
+  font-family: var(--font-mono);
   font-size: var(--type-2xs);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--color-ink-muted);
+  color: var(--color-accent);
 }
 
-/* The section numeral, set in the accent and rendered as marginalia. The rule
- * running off its right edge is what ties the label to the column. */
-.index {
-  color: var(--color-accent-ink);
-}
-
-.kicker::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--color-rule);
-}
-
+/* The whole point of the type system, used at full strength. */
 .title {
-  margin: 0 0 1.25rem;
+  margin: 0 0 1.5rem;
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(1.9rem, 4.4vw, var(--type-3xl));
-  line-height: var(--leading-tight);
-  letter-spacing: var(--tracking-tight);
+  font-weight: var(--weight-display);
+  font-size: clamp(2.4rem, 7.5vw, var(--type-2xl));
+  line-height: var(--leading-crushed);
+  letter-spacing: var(--tracking-crushed);
   color: var(--color-ink);
   text-wrap: balance;
 }
 
 .body {
   margin: 0;
-  max-width: 42ch;
+  max-width: 44ch;
+  font-family: var(--font-mono);
   font-size: var(--type-base);
   line-height: var(--leading-loose);
   color: var(--color-ink-secondary);
 }
 
-/* The aside is the footnote voice: smaller, indented behind a rule, and
- * carrying the detail someone will want on a second read. */
+.copy[data-anchor="top-right"] .body,
+.copy[data-anchor="bottom-right"] .body {
+  margin-left: auto;
+}
+
+/* The footnote voice: smaller, behind a rule, carrying the detail somebody
+ * wants on a second read. */
 .aside {
   margin: 1.4rem 0 0;
   padding-left: 1rem;
   border-left: 2px solid var(--color-accent-line);
   max-width: 40ch;
+  font-family: var(--font-mono);
   font-size: var(--type-sm);
   line-height: var(--leading-normal);
   color: var(--color-ink-muted);
@@ -161,27 +248,28 @@
 
 .kbd {
   display: inline-block;
-  padding: 0.5rem 0.9rem;
-  border: var(--rule-strong);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent-soft);
   font-family: var(--font-mono);
-  font-size: var(--type-base);
+  font-size: var(--type-md);
   font-weight: 500;
   letter-spacing: var(--tracking-wide);
   color: var(--color-accent-ink);
-  box-shadow: inset 0 -2px 0 var(--color-rule);
 }
 
 /* --- footer ------------------------------------------------------------- */
 
 .footer {
+  position: absolute;
+  z-index: 3;
+  left: var(--gutter);
+  right: var(--gutter);
+  bottom: var(--gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-top: 1rem;
-  border-top: var(--rule);
 }
 
 /* Progress as a row of rules, not dots: a printed page counts its sections in
@@ -204,7 +292,7 @@
 }
 
 .tick[data-state="current"] {
-  width: 2.6rem;
+  width: 3rem;
   background: var(--color-accent);
 }
 
@@ -220,9 +308,9 @@
 
 .back,
 .next {
-  border: var(--rule-strong);
+  border: 1px solid var(--color-rule-strong);
   border-radius: var(--radius-md);
-  padding: 0.55rem 1.4rem;
+  padding: 0.6rem 1.5rem;
   cursor: pointer;
   white-space: nowrap;
   font-family: var(--font-mono);
@@ -249,12 +337,12 @@
 .next {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: var(--ink-950);
+  color: var(--void-1000);
 }
 
 .next:hover {
-  background: var(--color-accent-ink);
-  border-color: var(--color-accent-ink);
+  background: var(--signal-400);
+  border-color: var(--signal-400);
 }
 
 .back:active,
@@ -262,16 +350,33 @@
   transform: translateY(1px);
 }
 
-/* Below this the two columns stop being a spread and start being a squeeze;
- * the artwork yields first because the words carry the meaning. */
-@media (max-width: 720px) {
-  .root {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 0.8fr) auto;
+/* In a small window the anchors collapse toward one another and the block
+ * would start colliding with the chrome. Below this it all goes bottom-left
+ * and stays there — an honest fallback beats a clever one that overlaps. */
+@media (max-width: 640px), (max-height: 520px) {
+  .copy,
+  .copy[data-anchor] {
+    left: calc(var(--gutter) + 2.5rem);
+    right: var(--gutter);
+    top: auto;
+    bottom: calc(var(--gutter) + 4rem);
+    transform: none;
+    max-width: none;
+    text-align: left;
   }
 
-  .stage {
+  .copy[data-anchor] .body,
+  .copy[data-anchor] .aside {
+    margin-left: 0;
+    margin-right: 0;
+    border-left: 2px solid var(--color-accent-line);
     border-right: 0;
-    border-bottom: var(--rule);
+    padding-left: 1rem;
+    padding-right: 0;
+  }
+
+  .copy[data-anchor] .body {
+    border-left: 0;
+    padding-left: 0;
   }
 }

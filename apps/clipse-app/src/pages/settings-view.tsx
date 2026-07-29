@@ -160,6 +160,28 @@ export function SettingsView({ onBack, status }: SettingsViewProps) {
               </Row>
             </section>
 
+            {/* The colophon. A tool that watches everything you copy should be
+             * easy to go and read the source of, so the repository is one click
+             * away rather than buried in a README nobody opens. */}
+            <section className={styles.section}>
+              <div className={styles.colophon}>
+                <div>
+                  <p className={styles.colophonTitle}>Clipse</p>
+                  <p className={styles.colophonLine}>
+                    Free and open source, built by Fatih Serbest.
+                  </p>
+                </div>
+                <a
+                  className={styles.colophonLink}
+                  href="https://github.com/fthsrbst/clipse"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  github.com/fthsrbst/clipse ↗
+                </a>
+              </div>
+            </section>
+
             <div className={styles.saveBar}>
               {errorMessage && <span className={styles.error}>{errorMessage}</span>}
               {savedFlash && <span className={styles.saved}>Saved</span>}

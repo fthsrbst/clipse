@@ -5,13 +5,45 @@
   background: var(--color-canvas);
 }
 
+/* A masthead, not a title bar: wordmark hard left, the count set as display
+ * type on the right, and the settings control small and last. The asymmetry is
+ * the point — a centred title would make this a dialog. */
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem 0.85rem;
+  border-bottom: 1px solid var(--color-rule);
   flex-shrink: 0;
+}
+
+/* The one big number in the product. It answers "did that copy land", which is
+ * the question the window exists for, so it is allowed to be loud. */
+.meter {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.count {
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-size: var(--type-xl);
+  line-height: 0.8;
+  letter-spacing: var(--tracking-crushed);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.countLabel {
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink-muted);
 }
 
 /* The mark is sized in em against this, so the font-size lives on the wrapper
@@ -26,9 +58,9 @@
 .title {
   font-family: var(--font-display);
   font-size: 1em;
-  font-weight: 400;
+  font-weight: var(--weight-display);
   color: var(--color-ink);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: var(--tracking-crushed);
 }
 
 .toolbar {

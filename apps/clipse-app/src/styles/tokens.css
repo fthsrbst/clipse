@@ -1,276 +1,182 @@
-/* Clipse design tokens — "the eclipse almanac".
+/* Clipse design tokens.
  *
- * The reference is a printed observatory logbook: warm uncoated paper, ink
- * that is never quite black, hairline rules instead of boxes, and a single
- * amber that stands for the corona. Type carries the hierarchy, so there are
- * only two faces and almost no rounding — a card with a 14px radius and a drop
- * shadow is the look this deliberately isn't.
+ * The room is almost black and faintly green — #000F08, the colour of a screen
+ * that is off — and exactly one thing in it is red. Nothing else is coloured.
+ * That is the whole system: an interface you can read in a dark room, where the
+ * only saturated pixel is the thing that just happened, the thing you selected,
+ * or the thing you should not have copied.
  *
- * Four rules when editing:
+ * Five rules when editing:
  *   1. Semantic tokens (--color-*) are what the UI uses. Raw palette values
- *      (--ink-*, --paper-*, --corona-*) are only ever referenced from here.
- *   2. The light theme is a design, not an inversion. Amber at its dark-theme
- *      value fails contrast on paper, so light has its own accent step.
+ *      (--void-*, --signal-*) are only ever referenced from here.
+ *   2. Red is not decoration. If two red things are on screen at once, one of
+ *      them is wrong.
  *   3. Rules, not borders. Structure comes from 1px hairlines and space.
- *   4. Every duration and easing comes from the motion scale below. A one-off
+ *   4. Type carries hierarchy, and it carries it with weight and scale, not
+ *      with boxes. The display face runs to 800; use it.
+ *   5. Every duration and easing comes from the motion scale below. A one-off
  *      `transition: 0.3s ease` is how a set of screens stops feeling like one
  *      product.
  */
 
 :root {
-  /* ---- Palette: ink ------------------------------------------------------
-   * Warm near-blacks. Pure #000 and blue-greys both read as "screen"; these
-   * read as printing ink, which is the point. */
-  --ink-950: #0A0907;
-  --ink-900: #0F0E0B;
-  --ink-850: #141310;
-  --ink-800: #1A1815;
-  --ink-700: #24221D;
-  --ink-600: #302D27;
-  --ink-500: #45413A;
+  /* ---- Palette: the void -------------------------------------------------
+   * Near-blacks with a green cast. Pure greys read as "unstyled"; this reads
+   * as a deliberate room. */
+  --void-1000: #000806;
+  --void-950: #000F08;
+  --void-900: #04150E;
+  --void-850: #071C14;
+  --void-800: #0B241A;
+  --void-700: #123024;
+  --void-600: #1B4032;
+  --void-500: #2A5443;
 
-  /* ---- Palette: paper ---------------------------------------------------- */
-  --paper-50: #FDFCF9;
-  --paper-100: #F8F6F0;
-  --paper-200: #F0EDE4;
-  --paper-300: #E4E0D4;
-  --paper-400: #D2CCBC;
-  --paper-500: #B4AC98;
+  /* ---- Palette: signal ---------------------------------------------------
+   * One hue, used sparingly and never decoratively. */
+  --signal-300: #FF8A8F;
+  --signal-400: #FD5A62;
+  --signal-500: #FB3640;
+  --signal-600: #D51C26;
+  --signal-700: #9E141B;
 
-  /* ---- Palette: corona ---------------------------------------------------
-   * The one saturated hue in the product. Used sparingly and never decoratively:
-   * it marks the live thing, the selected thing, or the thing you just did. */
-  --corona-200: #FFE7C2;
-  --corona-300: #FFD79B;
-  --corona-400: #FFC46B;
-  --corona-500: #F5A524;
-  --corona-600: #C97A10;
-  --corona-700: #8F5A0A;
-  --corona-800: #5E3A06;
+  /* ---- Palette: light ---------------------------------------------------- */
+  --lit-50: #F4F8F6;
+  --lit-100: #E3EBE7;
+  --lit-200: #C2D0C9;
+  --lit-300: #8FA79B;
+  --lit-400: #63796E;
+  --lit-500: #46584F;
 
-  /* ---- Text ramps -------------------------------------------------------- */
-  --on-ink-primary: #F5F2EA;
-  --on-ink-secondary: #A8A296;
-  --on-ink-muted: #6E685C;
+  /* ---- Semantic: dark is not a theme here, it is the design. ------------- */
+  --color-canvas: var(--void-950);
+  --color-surface: var(--void-900);
+  --color-surface-raised: var(--void-850);
+  --color-surface-hover: var(--void-800);
+  --color-surface-sunken: var(--void-1000);
 
-  --on-paper-primary: #17150F;
-  --on-paper-secondary: #4E4940;
-  --on-paper-muted: #7C7568;
+  --color-ink: var(--lit-50);
+  --color-ink-secondary: var(--lit-200);
+  --color-ink-muted: var(--lit-400);
 
-  /* ---- Semantic: dark is the default; the product is designed dark-first. */
-  --color-canvas: var(--ink-900);
-  --color-surface: var(--ink-850);
-  --color-surface-raised: var(--ink-800);
-  --color-surface-hover: var(--ink-700);
-  --color-surface-sunken: var(--ink-950);
-
-  --color-ink: var(--on-ink-primary);
-  --color-ink-secondary: var(--on-ink-secondary);
-  --color-ink-muted: var(--on-ink-muted);
-
-  /* A rule is a hairline, not a container edge. --rule-strong is for the few
-   * places a division has to be read as structural. */
-  --color-rule: #262320;
-  --color-rule-strong: #383430;
+  --color-rule: #0F2A1F;
+  --color-rule-strong: #1B4032;
   --color-border: var(--color-rule);
   --color-border-strong: var(--color-rule-strong);
 
-  --color-accent: var(--corona-500);
-  /* Accent for text and small glyphs, where contrast must hold. */
-  --color-accent-ink: var(--corona-400);
-  --color-accent-soft: rgba(245, 165, 36, 0.13);
-  --color-accent-line: rgba(245, 165, 36, 0.32);
-  --corona-gradient: linear-gradient(135deg, var(--corona-300), var(--corona-600));
+  --color-accent: var(--signal-500);
+  --color-accent-ink: var(--signal-400);
+  --color-accent-soft: rgba(251, 54, 64, 0.12);
+  --color-accent-line: rgba(251, 54, 64, 0.34);
+  --corona-gradient: linear-gradient(135deg, var(--signal-400), var(--signal-700));
 
-  --color-danger: #E8615C;
-  --color-success: #6FBF8B;
+  /* Danger *is* the accent, which is deliberate: in a clipboard manager the
+   * destructive act and the alarming act are the same colour of attention. */
+  --color-danger: var(--signal-500);
+  --color-success: #35D08A;
 
-  /* Shadows are almost absent by design; paper does not float. The popup is
-   * the exception because it genuinely hovers over another application. */
   --shadow-popup:
-    0 24px 64px rgba(0, 0, 0, 0.6),
-    0 2px 10px rgba(0, 0, 0, 0.45);
-  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
+    0 32px 80px rgba(0, 0, 0, 0.82),
+    0 2px 12px rgba(0, 0, 0, 0.6);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5);
 
   /* ---- Type --------------------------------------------------------------
-   * Two faces, no sans. Instrument Serif is the voice — high contrast, narrow,
-   * unmistakably editorial — and IBM Plex Mono is everything else, because in
-   * a clipboard manager almost every string on screen is somebody's code,
-   * path, URL or token, and a proportional face lies about all of them.
+   * Bricolage Grotesque is the voice: a contemporary grotesque with genuinely
+   * odd proportions, variable from 200 to 800 so headings can be set heavy
+   * without a second file. DM Mono is everything else, because almost every
+   * string in this product is somebody's code, path, URL or token, and a
+   * proportional face lies about all of them.
    *
-   * --font-sans is kept as an alias so nothing referencing it breaks; it
-   * resolves to the mono on purpose. */
-  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
-  --font-sans: var(--font-mono);
+   * --font-sans is kept as an alias so nothing referencing it breaks. */
+  --font-display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace;
+  --font-sans: var(--font-display);
 
   --type-2xs: 0.6875rem;
   --type-xs: 0.75rem;
   --type-sm: 0.8125rem;
   --type-base: 0.875rem;
   --type-md: 1rem;
-  --type-lg: 1.25rem;
-  --type-xl: 1.625rem;
-  --type-2xl: 2.25rem;
-  --type-3xl: 3.25rem;
-  --type-4xl: 4.5rem;
+  --type-lg: 1.375rem;
+  --type-xl: 2rem;
+  --type-2xl: 3rem;
+  --type-3xl: 4.5rem;
+  --type-4xl: 7rem;
 
-  --leading-tight: 1.05;
-  --leading-snug: 1.3;
-  --leading-normal: 1.55;
+  --weight-display: 800;
+  --weight-heading: 700;
+  --weight-body: 400;
+
+  --leading-crushed: 0.86;
+  --leading-tight: 0.98;
+  --leading-snug: 1.25;
+  --leading-normal: 1.5;
   --leading-loose: 1.7;
 
-  /* Mono needs to tighten as it grows and open up when it is set small and
-   * uppercase — that second value is the marginalia label throughout. */
+  /* Display type set large must be tracked in hard; small uppercase mono must
+   * be opened right up. Those are the two extremes the product lives at. */
+  --tracking-crushed: -0.045em;
   --tracking-tight: -0.02em;
   --tracking-normal: 0;
-  --tracking-label: 0.16em;
-  --tracking-wide: 0.04em;
+  --tracking-label: 0.18em;
+  --tracking-wide: 0.05em;
 
   /* ---- Motion ------------------------------------------------------------
-   * One scale, used everywhere.
-   *   instant  a state flip the eye should not have to wait for
-   *   fast     hover, focus, small colour changes
-   *   base     things entering or leaving in place
-   *   slow     a whole panel or a window changing what it is
-   *   stagger  the gap between successive items in a reveal
+   * One scale, used everywhere, and the same numbers are mirrored in
+   * `lib/motion.ts` for the GSAP timelines. If these change, change those.
    *
    * --ease-exit is deliberately not --ease-out reversed: leaving should feel
    * decided, not bouncy, or dismissing something looks like a mistake. */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring: cubic-bezier(0.22, 1.4, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
 
   --duration-instant: 90ms;
   --duration-fast: 160ms;
-  --duration-base: 260ms;
-  --duration-slow: 480ms;
+  --duration-base: 280ms;
+  --duration-slow: 520ms;
   --duration-glacial: 900ms;
-  --stagger: 34ms;
+  --stagger: 32ms;
 
   /* ---- Geometry ----------------------------------------------------------
-   * Near-square. Print does not have rounded corners, and the little that
-   * remains is there to keep focus rings from looking sharp enough to cut. */
-  --radius-sm: 1px;
-  --radius-md: 2px;
-  --radius-lg: 3px;
+   * Square. The little that remains keeps focus rings from looking sharp
+   * enough to cut. */
+  --radius-sm: 0px;
+  --radius-md: 1px;
+  --radius-lg: 2px;
   --radius-pill: 999px;
 
   --rule: 1px solid var(--color-rule);
   --rule-strong: 1px solid var(--color-rule-strong);
 
-  /* The marginalia column: section numerals and labels sit here, content
-   * starts after it. This one measurement is what makes the layout read as a
-   * page rather than a form. */
-  --margin-column: 4.5rem;
   --gutter: 1.75rem;
 
-  /* Paper grain. A single inline SVG turbulence, tuned low enough to be felt
-   * rather than seen; without it large flat areas look like a screenshot of a
-   * design tool. */
-  --grain-opacity: 0.028;
+  /* Grain. A single inline SVG turbulence, low enough to be felt rather than
+   * seen; without it, large flat areas of near-black band visibly on cheap
+   * panels. */
+  --grain-opacity: 0.035;
 }
 
-/* Light theme.
+/* There is no light theme.
  *
- * Warm uncoated stock, not white. The accent drops two steps because
- * --corona-500 on paper is about 2.4:1 — fine behind a filled button, nowhere
- * near enough for text. */
-@media (prefers-color-scheme: light) {
-  :root {
-    --color-canvas: var(--paper-100);
-    --color-surface: var(--paper-50);
-    --color-surface-raised: var(--paper-50);
-    --color-surface-hover: var(--paper-200);
-    --color-surface-sunken: var(--paper-200);
-
-    --color-ink: var(--on-paper-primary);
-    --color-ink-secondary: var(--on-paper-secondary);
-    --color-ink-muted: var(--on-paper-muted);
-
-    --color-rule: #DFDACE;
-    --color-rule-strong: #C7C0B0;
-    --color-border: var(--color-rule);
-    --color-border-strong: var(--color-rule-strong);
-
-    --color-accent: var(--corona-600);
-    --color-accent-ink: var(--corona-700);
-    --color-accent-soft: rgba(201, 122, 16, 0.11);
-    --color-accent-line: rgba(201, 122, 16, 0.3);
-    --corona-gradient: linear-gradient(135deg, var(--corona-500), var(--corona-700));
-
-    --color-danger: #B4322E;
-    --color-success: #1F7A4C;
-
-    --shadow-popup:
-      0 24px 56px rgba(23, 21, 15, 0.18),
-      0 2px 8px rgba(23, 21, 15, 0.1);
-    --shadow-raised: 0 1px 2px rgba(23, 21, 15, 0.08);
-
-    --grain-opacity: 0.04;
-  }
-}
-
-/* The in-app theme toggle stamps data-theme on the root; it must beat the
- * media query in both directions, so both are spelled out explicitly. */
-:root[data-theme="dark"] {
-  --color-canvas: var(--ink-900);
-  --color-surface: var(--ink-850);
-  --color-surface-raised: var(--ink-800);
-  --color-surface-hover: var(--ink-700);
-  --color-surface-sunken: var(--ink-950);
-  --color-ink: var(--on-ink-primary);
-  --color-ink-secondary: var(--on-ink-secondary);
-  --color-ink-muted: var(--on-ink-muted);
-  --color-rule: #262320;
-  --color-rule-strong: #383430;
-  --color-border: var(--color-rule);
-  --color-border-strong: var(--color-rule-strong);
-  --color-accent: var(--corona-500);
-  --color-accent-ink: var(--corona-400);
-  --color-accent-soft: rgba(245, 165, 36, 0.13);
-  --color-accent-line: rgba(245, 165, 36, 0.32);
-  --corona-gradient: linear-gradient(135deg, var(--corona-300), var(--corona-600));
-  --color-danger: #E8615C;
-  --color-success: #6FBF8B;
-  --shadow-popup:
-    0 24px 64px rgba(0, 0, 0, 0.6),
-    0 2px 10px rgba(0, 0, 0, 0.45);
-  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --grain-opacity: 0.028;
-}
-
+ * This is a deliberate product decision rather than an omission: the interface
+ * is a dark room with one red light in it, and every relationship in the
+ * palette — the grain, the hairlines, the single accent — is built on that.
+ * A light inversion would not be the same product with different values, it
+ * would be a different design, and shipping a bad one is worse than not
+ * shipping one. `data-theme` is honoured so the toggle keeps working and so a
+ * future light design has somewhere to live.
+ */
+:root[data-theme="dark"],
 :root[data-theme="light"] {
-  --color-canvas: var(--paper-100);
-  --color-surface: var(--paper-50);
-  --color-surface-raised: var(--paper-50);
-  --color-surface-hover: var(--paper-200);
-  --color-surface-sunken: var(--paper-200);
-  --color-ink: var(--on-paper-primary);
-  --color-ink-secondary: var(--on-paper-secondary);
-  --color-ink-muted: var(--on-paper-muted);
-  --color-rule: #DFDACE;
-  --color-rule-strong: #C7C0B0;
-  --color-border: var(--color-rule);
-  --color-border-strong: var(--color-rule-strong);
-  --color-accent: var(--corona-600);
-  --color-accent-ink: var(--corona-700);
-  --color-accent-soft: rgba(201, 122, 16, 0.11);
-  --color-accent-line: rgba(201, 122, 16, 0.3);
-  --corona-gradient: linear-gradient(135deg, var(--corona-500), var(--corona-700));
-  --color-danger: #B4322E;
-  --color-success: #1F7A4C;
-  --shadow-popup:
-    0 24px 56px rgba(23, 21, 15, 0.18),
-    0 2px 8px rgba(23, 21, 15, 0.1);
-  --shadow-raised: 0 1px 2px rgba(23, 21, 15, 0.08);
-  --grain-opacity: 0.04;
+  color-scheme: dark;
 }
 
 /* Someone who has asked their system to stop moving things means it. Durations
  * collapse to zero rather than being merely shortened, and the stagger goes
- * with them so lists appear whole instead of dealing themselves out. */
+ * with them so lists appear whole instead of dealing themselves out. The GSAP
+ * timelines read the same preference; see `lib/motion.ts`. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --duration-instant: 0ms;

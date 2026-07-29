@@ -20,8 +20,11 @@
   line-height: 1;
   letter-spacing: 0.04em;
   white-space: pre;
-  color: var(--color-accent-ink);
-  text-shadow: 0 0 22px var(--color-accent-soft);
+  color: var(--color-accent);
+  /* The bloom is what stops a grid of punctuation reading as text. */
+  text-shadow:
+    0 0 14px rgba(251, 54, 64, 0.45),
+    0 0 42px rgba(251, 54, 64, 0.18);
   user-select: none;
   /* The glyph grid is the artwork; sub-pixel positioning blurs it. */
   transform: translateZ(0);
