@@ -1,10 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClipTypeFilter } from "../lib/popup-reducer";
 import { matchesTypeFilter, serverKindForFilter } from "../lib/clip-content";
-import { api, isNotConnected, onClipAdded, onClipRemoved, onClipUpdated } from "../lib/tauri-client";
+import {
+  api,
+  isNotConnected,
+  onClipAdded,
+  onClipRemoved,
+  onClipUpdated,
+  onConnectionChanged,
+} from "../lib/tauri-client";
 import type { Clip, HistoryQuery } from "../types/ipc";
 
 const PAGE_SIZE = 150;
+
+/** Retries while the embedded daemon is still starting. Bounded, because past
+ * this point the daemon really is not coming and saying so is the honest
+ * answer — roughly ten seconds, which covers opening a fresh database on a
+ * slow disk. */
+const STARTUP_RETRY_MS = 500;
+const STARTUP_ATTEMPTS = 20;
 
 export interface ClipHistory {
   clips: Clip[];
@@ -102,6 +116,45 @@ export function useClipHistory(): ClipHistory {
     // Intentionally re-runs only when a query-shaping input changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchText, typeFilter, pinnedOnly, runFetch]);
+
+  /* Coming back from unreachable.
+   *
+   * The first fetch of a cold launch almost always fails: the daemon starts
+   * inside this process and has a database to open, and the window is drawn
+   * long before that. Nothing re-triggered the fetch afterwards, so a brand-new
+   * install sat on "Clipse isn't running" indefinitely while a perfectly
+   * healthy daemon answered every other client on the machine.
+   *
+   * Both halves are needed. The event covers a daemon that comes up (or comes
+   * back) after this mounted; the short retry covers the race where it was
+   * already up and the event fired before anyone was listening. */
+  useEffect(() => {
+    let disposed = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const retry = () => {
+      if (disposed || attempts >= STARTUP_ATTEMPTS) return;
+      attempts += 1;
+      void runFetch(true);
+      timer = setTimeout(retry, STARTUP_RETRY_MS);
+    };
+    timer = setTimeout(retry, STARTUP_RETRY_MS);
+
+    const unlisten = onConnectionChanged((connected) => {
+      if (disposed || !connected) return;
+      // Connected: stop guessing and read the truth.
+      clearTimeout(timer);
+      attempts = STARTUP_ATTEMPTS;
+      void runFetch(true);
+    });
+
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      void unlisten.then((fn) => fn());
+    };
+  }, [runFetch]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore) return;
