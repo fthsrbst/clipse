@@ -1,3 +1,4 @@
+mod autostart;
 mod commands;
 mod connection;
 mod daemon_host;
@@ -48,6 +49,14 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Clipse is only useful if it is already running when you copy
+        // something, so it launches at login by default. `--minimised` is read
+        // by `main.rs`: starting at login should put it in the tray, not throw
+        // a window at someone who has just signed in.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimised"]),
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -81,7 +90,33 @@ pub fn run() {
                 let _ = connection_state.notch.set(panel);
             }
 
+            // The login item is reconciled from `connection.rs`, once the
+            // daemon can actually answer what the setting is.
             connection::spawn(handle.clone(), connection_state, ready);
+
+            // Launched by the login item: stay in the tray rather than opening
+            // a window over whatever someone is doing as they sign in.
+            if std::env::args().any(|arg| arg == "--minimised")
+                && let Some(main) = app.get_webview_window("main")
+            {
+                let _ = main.hide();
+            }
+
+            // Closing the window hides it; it does not destroy it.
+            //
+            // Clipse keeps working with no window open — that is the point of a
+            // tray app — and a destroyed window cannot be shown again, so
+            // "Open Clipse" in the tray menu silently did nothing for the rest
+            // of the session. Quitting is deliberate, from the tray.
+            if let Some(main) = app.get_webview_window("main") {
+                let closing = main.clone();
+                main.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = closing.hide();
+                    }
+                });
+            }
 
             // Escape is handled in the popup's own JS (it calls the
             // `hide_popup` command); losing focus — clicking elsewhere — is

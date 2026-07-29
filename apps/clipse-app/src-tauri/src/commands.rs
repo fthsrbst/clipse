@@ -286,6 +286,11 @@ pub async fn update_settings(
         tracing::warn!("could not re-register hotkey {}: {e}", applied.hotkey);
     }
 
+    // Driven from what the daemon *applied*, not from what was asked for: the
+    // daemon is the authority on settings, and the login item should follow the
+    // stored value rather than an optimistic one.
+    crate::autostart::apply(&app, applied.start_at_login);
+
     Ok(applied)
 }
 

@@ -66,6 +66,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        // Unminimise first: a minimised window answers `show()` without ever
+        // coming back into view, which looks exactly like the menu item being
+        // broken.
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }

@@ -37,6 +37,10 @@ pub fn spawn(app: AppHandle, state: Arc<AppState>, ready: oneshot::Receiver<()>)
 
 async fn run_loop(app: AppHandle, state: Arc<AppState>) {
     let mut backoff = MIN_BACKOFF;
+    // The login item is reconciled once, on the first connection of the
+    // session. Doing it on every reconnect would fight a user who is toggling
+    // the OS login item by hand while the daemon flaps.
+    let mut reconciled_autostart = false;
 
     loop {
         match connect_both(&state.endpoint).await {
@@ -62,6 +66,11 @@ async fn run_loop(app: AppHandle, state: Arc<AppState>) {
                         local_device = status.device.to_string();
                     }
                     forward_status(&app, &status);
+
+                    if !reconciled_autostart {
+                        reconciled_autostart = true;
+                        crate::autostart::apply_from_settings(&app, Arc::clone(&state));
+                    }
                 }
 
                 #[cfg(target_os = "macos")]
