@@ -29,14 +29,17 @@
 }
 
 :root {
-  --void: #000f08;
-  --void-deep: #000806;
+  /* Kept in step with `apps/clipse-app/src/styles/tokens.css`. The green cast
+   * is the palette's one idea, and at the old values it survived on paper and
+   * nowhere else. */
+  --void: #06180f;
+  --void-deep: #01100a;
   --signal: #fb3640;
   --signal-dim: rgba(251, 54, 64, 0.34);
   --ink: #f4f8f6;
   --ink-2: #c2d0c9;
   --ink-3: #63796e;
-  --rule: #0f2a1f;
+  --rule: #17382a;
 
   --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
   --mono: "DM Mono", ui-monospace, "SF Mono", monospace;

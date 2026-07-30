@@ -1,7 +1,7 @@
 /* Clipse design tokens.
  *
- * The room is almost black and faintly green — #000F08, the colour of a screen
- * that is off — and exactly one thing in it is red. Nothing else is coloured.
+ * The room is almost black and green — #06180F, the colour of a screen that is
+ * off — and exactly one thing in it is red. Nothing else is coloured.
  * That is the whole system: an interface you can read in a dark room, where the
  * only saturated pixel is the thing that just happened, the thing you selected,
  * or the thing you should not have copied.
@@ -22,15 +22,22 @@
 :root {
   /* ---- Palette: the void -------------------------------------------------
    * Near-blacks with a green cast. Pure greys read as "unstyled"; this reads
-   * as a deliberate room. */
-  --void-1000: #000806;
-  --void-950: #000F08;
-  --void-900: #04150E;
-  --void-850: #071C14;
-  --void-800: #0B241A;
-  --void-700: #123024;
-  --void-600: #1B4032;
-  --void-500: #2A5443;
+   * as a deliberate room.
+   *
+   * The cast is deliberately above the threshold where it survives a real
+   * screen. The first version of this ramp put the canvas at #000F08 — green
+   * on paper, and indistinguishable from black on anything but a good panel in
+   * a dark room, which meant the one decision the palette is built on was
+   * invisible. Raised until the green is legible as green while the room is
+   * still unmistakably dark. */
+  --void-1000: #01100A;
+  --void-950: #06180F;
+  --void-900: #0A2016;
+  --void-850: #0E271B;
+  --void-800: #123021;
+  --void-700: #1A3D2C;
+  --void-600: #244D39;
+  --void-500: #33604A;
 
   /* ---- Palette: signal ---------------------------------------------------
    * One hue, used sparingly and never decoratively. */
@@ -59,8 +66,11 @@
   --color-ink-secondary: var(--lit-200);
   --color-ink-muted: var(--lit-400);
 
-  --color-rule: #0F2A1F;
-  --color-rule-strong: #1B4032;
+  /* Raised with the void ramp. Structure here comes from hairlines, so a rule
+   * that sinks into the canvas does not merely look weak — it removes the only
+   * thing separating one row from the next. */
+  --color-rule: #17382A;
+  --color-rule-strong: #265440;
   --color-border: var(--color-rule);
   --color-border-strong: var(--color-rule-strong);
 
