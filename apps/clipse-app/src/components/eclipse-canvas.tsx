@@ -17,7 +17,7 @@ interface Props {
 const COLS = 54;
 const ROWS = 22;
 
-/** IBM Plex Mono advances 0.6em per character; the extra covers the tracking
+/** DM Mono advances 0.6em per character; the extra covers the tracking
  * applied in CSS. Measuring the real glyph would be more correct and would also
  * mean a layout read on every resize, for a number that does not change. */
 const ADVANCE = 0.64;

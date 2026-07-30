@@ -128,21 +128,3 @@ export function render({ width, height, phase, time = 0 }: EclipseOptions): stri
 
   return lines;
 }
-
-/**
- * The mark, at a size that fits beside a heading.
- *
- * Fixed rather than computed: the logotype has to be identical everywhere it
- * appears, including in places that never animate.
- */
-export const ECLIPSE_MARK = [
-  "  ,:;=!*!=;:,  ",
-  " ;=*#      #*= ",
-  ":*#          #*",
-  "=*            *",
-  "!#            #",
-  "=*            *",
-  ":*#          #*",
-  " ;=*#      #*= ",
-  "  ,:;=!*!=;:,  ",
-];

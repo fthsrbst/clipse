@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { AsciiMark } from "../components/ascii-mark";
+import { AsciiLogo } from "../components/ascii-logo";
 import { SearchBox } from "../components/search-box";
 import { TypeFilterTabs } from "../components/type-filter-tabs";
 import { ClipList } from "../components/clip-list";
@@ -79,7 +79,7 @@ export function HistoryWindow() {
        * top of the window reads as a masthead rather than a toolbar. */}
       <header className={styles.header} data-enter>
         <div className={styles.brand}>
-          <AsciiMark />
+          <AsciiLogo variant="mark" cell={5} />
           <span className={styles.title}>Clipse</span>
         </div>
 

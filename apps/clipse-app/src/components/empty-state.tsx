@@ -1,4 +1,5 @@
-import { EclipseMark } from "./eclipse-mark";
+import { AsciiLogo } from "./ascii-logo";
+import { EclipseCanvas } from "./eclipse-canvas";
 import styles from "./empty-state.module.css";
 
 export interface EmptyStateProps {
@@ -13,7 +14,16 @@ export interface EmptyStateProps {
 export function EmptyState({ title, description, action, animated = false }: EmptyStateProps) {
   return (
     <div className={styles.wrap}>
-      <EclipseMark size={64} animated={animated} className={styles.mark} />
+      {/* Loading gets the computed field, which drifts; a settled empty state
+       * gets the fixed mark. An animation on a state that is not waiting for
+       * anything says something is happening when nothing is. */}
+      {animated ? (
+        <div className={styles.field}>
+          <EclipseCanvas phase={0.5} />
+        </div>
+      ) : (
+        <AsciiLogo variant="mark" cell={7} className={styles.mark} />
+      )}
       <p className={styles.title}>{title}</p>
       {description && <p className={styles.description}>{description}</p>}
       {action && <div className={styles.action}>{action}</div>}

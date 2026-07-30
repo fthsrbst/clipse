@@ -1,5 +1,5 @@
 import { WifiOffIcon } from "./icons";
-import { EclipseMark } from "./eclipse-mark";
+import { AsciiLogo } from "./ascii-logo";
 import styles from "./daemon-offline-state.module.css";
 
 export interface DaemonOfflineStateProps {
@@ -14,7 +14,7 @@ export function DaemonOfflineState({ onRetry }: DaemonOfflineStateProps) {
   return (
     <div className={styles.wrap}>
       <div className={styles.markWrap}>
-        <EclipseMark size={64} variant="mono" className={styles.mark} />
+        <AsciiLogo variant="mark" cell={7} className={styles.mark} />
         <span className={styles.badge}>
           <WifiOffIcon size={12} />
         </span>

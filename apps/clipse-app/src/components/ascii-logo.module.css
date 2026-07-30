@@ -1,0 +1,16 @@
+/* The grid is the drawing, so nothing may nudge a character off it.
+ *
+ * `line-height: 1` and zero tracking keep the cells square to each other, and
+ * ligatures are off because DM Mono would happily fuse the `=*` pairs in the
+ * corona into a single glyph and bend the circle. */
+.logo {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  white-space: pre;
+  color: currentColor;
+  user-select: none;
+}
