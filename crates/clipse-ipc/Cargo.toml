@@ -12,6 +12,10 @@ description = "Protocol and transport between the Clipse daemon and its user int
 clipse-core.workspace = true
 rmp-serde.workspace = true
 serde.workspace = true
+# So a payload response encodes as a MessagePack `bin` blob at 1:1 rather than
+# as an array of integers at ~1.5x. Without it MAX_PAYLOAD_BYTES would be an
+# artefact of the encoding instead of a decision about the product.
+serde_bytes = "0.11"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "net", "sync", "time", "macros"] }
 tracing.workspace = true

@@ -1,4 +1,4 @@
-use clipse_core::{Clip, ClipId, ClipKind, DeviceId};
+use clipse_core::{Clip, ClipFormat, ClipId, ClipKind, DeviceId};
 use serde::{Deserialize, Serialize};
 
 /// One message on the wire. `id` correlates a [`Response`] with its
@@ -74,6 +74,16 @@ pub enum Request {
         id: ClipId,
     },
 
+    /// The bytes of one of a clip's payloads.
+    ///
+    /// `GetClip` cannot answer this: a payload over
+    /// `clipse_core::INLINE_MAX_BYTES` has a `PayloadBody::Blob` body, which
+    /// carries no bytes at all — and that covers essentially every screenshot.
+    GetPayload {
+        id: ClipId,
+        format: ClipFormat,
+    },
+
     /// Put a stored clip back on the local clipboard.
     Apply {
         id: ClipId,
@@ -133,6 +143,15 @@ pub enum Response {
     },
     Clips(Vec<Clip>),
     Clip(Option<Box<Clip>>),
+    /// `None` covers all the ordinary misses: no such clip, no payload in that
+    /// format, or one past `MAX_PAYLOAD_BYTES`. None of them is an error — the
+    /// caller shows a size instead of a picture.
+    ///
+    /// `ByteBuf` rather than `Vec<u8>` so this encodes as a MessagePack `bin`
+    /// blob at 1:1. A plain byte vector encodes as an array of integers at
+    /// roughly 1.5x, which would make the size cap an artefact of the encoding
+    /// rather than a decision.
+    PayloadBytes(Option<serde_bytes::ByteBuf>),
     Status(Box<DaemonStatus>),
     Devices(Vec<PeerInfo>),
     Settings(Box<Settings>),

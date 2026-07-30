@@ -5,7 +5,9 @@
 
 use std::sync::Arc;
 
-use clipse_core::{Clip, ClipId};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use clipse_core::{Clip, ClipFormat, ClipId};
 use clipse_ipc::client::ClientError;
 use clipse_ipc::{DaemonStatus, HistoryQuery, PeerInfo, Request, Response, Settings};
 use serde::Serialize;
@@ -85,6 +87,27 @@ pub async fn get_clip(
     match call(&state, Request::GetClip { id }).await? {
         Response::Clip(clip) => Ok(clip.map(|c| *c)),
         _ => Err(unexpected("get_clip")),
+    }
+}
+
+/// One payload's bytes, base64-encoded.
+///
+/// Base64 rather than raw bytes because the only consumer builds a `data:`
+/// URL, and Tauri serialises a `Vec<u8>` to the webview as a JSON array of
+/// numbers — about four characters per byte, for something that would then
+/// have to be re-encoded anyway.
+///
+/// `None` is an ordinary answer, not an error: the clip may have no payload in
+/// that format, or one past `clipse_ipc::MAX_PAYLOAD_BYTES`.
+#[tauri::command]
+pub async fn get_payload(
+    state: State<'_, Arc<AppState>>,
+    id: ClipId,
+    format: ClipFormat,
+) -> Result<Option<String>, CommandError> {
+    match call(&state, Request::GetPayload { id, format }).await? {
+        Response::PayloadBytes(bytes) => Ok(bytes.map(|b| BASE64.encode(b.as_ref()))),
+        _ => Err(unexpected("get_payload")),
     }
 }
 

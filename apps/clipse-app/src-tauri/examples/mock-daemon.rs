@@ -151,6 +151,21 @@ async fn handle(daemon: &Daemon, request: Request) -> Response {
             Response::Clip(clips.iter().find(|c| c.id == id).cloned().map(Box::new))
         }
 
+        // The mock has no blob store, so only inline payloads can be served.
+        // That is enough to drive the detail panel, and a blob-backed clip
+        // here exercises the "no preview, here is the size" path the real
+        // daemon takes past the cap.
+        Request::GetPayload { id, format } => {
+            let clips = daemon.clips.lock().await;
+            let bytes = clips
+                .iter()
+                .find(|c| c.id == id)
+                .and_then(|c| c.payloads.iter().find(|p| p.format == format))
+                .and_then(|p| p.inline_bytes())
+                .map(|b| serde_bytes::ByteBuf::from(b.to_vec()));
+            Response::PayloadBytes(bytes)
+        }
+
         // A mock has no real clipboard owner to reach; acknowledging is
         // enough for the UI to exercise the round trip.
         Request::Apply { .. } | Request::Paste { .. } => Response::Ok,

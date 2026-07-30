@@ -153,6 +153,7 @@ pub fn run() {
             commands::history,
             commands::search,
             commands::get_clip,
+            commands::get_payload,
             commands::apply,
             commands::paste,
             commands::set_pinned,

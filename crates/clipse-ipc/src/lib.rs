@@ -22,11 +22,21 @@ pub use protocol::{
     IpcError, PeerInfo, Request, Response, Settings,
 };
 
+/// The largest payload the daemon will hand to a UI for preview.
+///
+/// A ceiling on *previewing*, not on storing or syncing: a 400MB file copy is
+/// still a perfectly good clip, it just is not something to pull into a
+/// webview. Sized to clear a 4K screenshot with room to spare while leaving
+/// 8MB of headroom under [`MAX_FRAME_BYTES`] — the response is `serde_bytes`,
+/// so it encodes 1:1 and this number means what it says.
+pub const MAX_PAYLOAD_BYTES: u64 = 24 * 1024 * 1024;
+
 /// Bumped when a client and a daemon can no longer understand each other.
 /// Independent of `clipse_core::PROTOCOL_VERSION`, which governs the *network*
 /// format between two daemons.
 ///
-/// 2: `DaemonStatus::secrets_refused`. The `Hello` handshake refuses a
-/// mismatch outright (see `client.rs`), so an addition guarded by a bump needs
-/// no optional-field fallback — both sides are guaranteed to agree.
+/// 2: `DaemonStatus::secrets_refused` and `Request::GetPayload`. The `Hello`
+/// handshake refuses a mismatch outright (see `client.rs`), so an addition
+/// guarded by a bump needs no optional-field fallback and no degraded path —
+/// both sides are guaranteed to agree.
 pub const IPC_VERSION: u16 = 2;

@@ -382,6 +382,33 @@ impl Daemon {
 
 const POISONED: &str = "daemon state poisoned by an earlier panic";
 
+/// The bytes of one payload, or `None` for every ordinary miss: no payload in
+/// that format, or one past the preview cap.
+///
+/// A free function beside `materialize` for the same reason that one is — the
+/// interesting behaviour is payload selection, and it is worth testing without
+/// standing up a daemon.
+///
+/// The cap is checked *before* the store is asked. A payload declared larger
+/// than the cap may have no blob on disk at all (an offer whose chunks never
+/// arrived), and asking for it would turn "too big to preview" into an error.
+fn read_payload(
+    store: &Store,
+    clip: &Clip,
+    format: ClipFormat,
+) -> clipse_store::Result<Option<Vec<u8>>> {
+    let Some(payload) = clip.payloads.iter().find(|p| p.format == format) else {
+        return Ok(None);
+    };
+    if payload.size > clipse_ipc::MAX_PAYLOAD_BYTES {
+        return Ok(None);
+    }
+    match payload.inline_bytes() {
+        Some(bytes) => Ok(Some(bytes.to_vec())),
+        None => store.read_blob(&payload.digest).map(Some),
+    }
+}
+
 /// Gather every representation's bytes, pulling blobs off disk as needed.
 ///
 /// A clip whose blob was evicted by the quota cannot be pasted in full; the
@@ -457,6 +484,20 @@ impl RequestHandler for Daemon {
                 Ok(clip) => Response::Clip(clip.map(Box::new)),
                 Err(response) => response,
             },
+
+            Request::GetPayload { id, format } => {
+                let read = self
+                    .with_store(move |store| match store.get(id)? {
+                        Some(clip) => read_payload(store, &clip, format),
+                        None => Ok(None),
+                    })
+                    .await;
+
+                match read {
+                    Ok(bytes) => Response::PayloadBytes(bytes.map(serde_bytes::ByteBuf::from)),
+                    Err(response) => response,
+                }
+            }
 
             Request::Apply { id } => self.apply(id).await,
 
@@ -624,6 +665,79 @@ mod tests {
         let payloads = materialize(&store, &clip).unwrap();
         assert_eq!(payloads.len(), 1, "the text must still be pasteable");
         assert_eq!(payloads[0].0, ClipFormat::Text);
+    }
+
+    #[test]
+    fn read_payload_returns_inline_bytes_without_touching_the_cas() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(dir.path());
+        let clip = text_clip(&store, "hello there");
+
+        let got = read_payload(&store, &clip, ClipFormat::Text).unwrap();
+        assert_eq!(got.as_deref(), Some(b"hello there".as_slice()));
+    }
+
+    #[test]
+    fn read_payload_pulls_a_blob_backed_image_off_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(dir.path());
+
+        // Over INLINE_MAX_BYTES, so the body is `Blob` and carries no bytes at
+        // all — which is the entire reason this function exists.
+        let big = vec![9u8; (INLINE_MAX_BYTES + 1_000) as usize];
+        let payload = Payload::new(ClipFormat::Png, big.clone());
+        assert!(payload.is_blob(), "test premise");
+        let digest = payload.digest;
+
+        let clock = HlcClock::new(DeviceId::generate());
+        let clip = Clip::new(
+            vec![payload],
+            ClipSource::new(DeviceId::generate(), "test"),
+            clock.now(),
+        );
+        store.put_blob(&digest, &big).unwrap();
+        store.insert(&clip).unwrap();
+
+        let got = read_payload(&store, &clip, ClipFormat::Png).unwrap();
+        assert_eq!(got.as_deref(), Some(big.as_slice()));
+    }
+
+    #[test]
+    fn read_payload_declines_an_over_cap_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(dir.path());
+
+        // Declared rather than allocated: `Payload::blob` states a size without
+        // 24MB of bytes behind it, so the cap can be tested for the price of a
+        // struct.
+        let payload = Payload::blob(
+            ClipFormat::Png,
+            clipse_core::ContentHash::of(b"whatever"),
+            clipse_ipc::MAX_PAYLOAD_BYTES + 1,
+        );
+
+        let clock = HlcClock::new(DeviceId::generate());
+        let clip = Clip::new(
+            vec![payload],
+            ClipSource::new(DeviceId::generate(), "test"),
+            clock.now(),
+        );
+        store.insert(&clip).unwrap();
+
+        // None, not an error: "too big to preview" is an ordinary answer, and
+        // the panel shows the size instead. Note the blob was never written,
+        // so an unguarded read would fail rather than return None — the cap has
+        // to be checked before the store is asked.
+        assert_eq!(read_payload(&store, &clip, ClipFormat::Png).unwrap(), None);
+    }
+
+    #[test]
+    fn read_payload_is_none_for_a_format_the_clip_does_not_have() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(dir.path());
+        let clip = text_clip(&store, "hello");
+
+        assert_eq!(read_payload(&store, &clip, ClipFormat::Png).unwrap(), None);
     }
 
     #[test]

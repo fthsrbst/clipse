@@ -25,7 +25,12 @@ clipse-ipc.workspace = true
 clipsed.workspace = true
 
 anyhow.workspace = true
+# Encodes a payload for the webview; see `commands::get_payload`.
+base64 = "0.22"
 serde.workspace = true
+# Only the mock daemon builds a PayloadBytes response by hand; the app itself
+# just unwraps one.
+serde_bytes = "0.11"
 serde_json.workspace = true
 # `process` is not in the workspace feature set because only this crate spawns
 # a child: the macOS notch sidecar.

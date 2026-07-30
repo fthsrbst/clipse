@@ -26,6 +26,9 @@ anyhow.workspace = true
 async-trait.workspace = true
 clap = { version = "4.6", features = ["derive"] }
 serde.workspace = true
+# Wraps the GetPayload response so it stays a MessagePack bin blob; see
+# clipse-ipc's MAX_PAYLOAD_BYTES.
+serde_bytes = "0.11"
 serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "signal", "fs"] }

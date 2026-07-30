@@ -13,6 +13,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
   type Clip,
+  type ClipFormat,
   type CommandError,
   type DaemonStatus,
   type HistoryQuery,
@@ -64,6 +65,11 @@ export const api = {
   history: (query: HistoryQuery) => call<Clip[]>("history", { query }),
   search: (text: string, query: HistoryQuery) => call<Clip[]>("search", { text, query }),
   getClip: (id: string) => call<Clip | null>("get_clip", { id }),
+  /** Base64 of one payload, or `null` when the clip, the format, or a size
+   * under the daemon's 24MB preview cap is missing. All three are ordinary
+   * answers rather than errors — the caller shows a size instead. */
+  getPayload: (id: string, format: ClipFormat) =>
+    call<string | null>("get_payload", { id, format }),
   apply: (id: string) => call<void>("apply", { id }),
   paste: (id: string) => call<void>("paste", { id }),
   setPinned: (id: string, pinned: boolean) => call<void>("set_pinned", { id, pinned }),
