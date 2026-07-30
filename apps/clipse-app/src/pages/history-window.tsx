@@ -187,6 +187,10 @@ export function HistoryWindow() {
             onTogglePin={handleTogglePin}
             onCopy={handleCopy}
             onDelete={handleDelete}
+            onPeek={(clip) => {
+              setSelectedId(clip.id);
+              setPeeking(true);
+            }}
             onNearEnd={history.loadMore}
           />
         )}

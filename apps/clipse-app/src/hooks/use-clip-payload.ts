@@ -17,6 +17,23 @@ export interface ClipPayload {
 const IDLE: ClipPayload = { imageUrl: null, loading: false, tooLarge: false };
 
 /**
+ * What a row is willing to pull over IPC for a thumbnail.
+ *
+ * The daemon's own cap is 24MB, which is the right number for "show me this
+ * clip". It is the wrong number for a list: a screenful of rows would each ask
+ * for one, and ten 24MB payloads arrive as base64 in a webview that has to hold
+ * all of them at once. Past this the row shows the size and the detail panel —
+ * which fetches one clip, on purpose — shows the picture.
+ */
+export const THUMBNAIL_MAX_BYTES = 4 * 1024 * 1024;
+
+export interface ClipPayloadOptions {
+  /** Skip the fetch above this payload size. Defaults to no limit of our own,
+   * leaving only the daemon's. */
+  maxBytes?: number;
+}
+
+/**
  * The bytes behind a clip, fetched only when something is actually looking.
  *
  * Inline payloads (under 64KB) already travel with the clip and need no request
@@ -24,8 +41,9 @@ const IDLE: ClipPayload = { imageUrl: null, loading: false, tooLarge: false };
  * `get_payload` — which is the whole reason that request exists, since a
  * screenshot is essentially never under 64KB.
  */
-export function useClipPayload(clip: Clip | null): ClipPayload {
+export function useClipPayload(clip: Clip | null, options: ClipPayloadOptions = {}): ClipPayload {
   const [state, setState] = useState<ClipPayload>(IDLE);
+  const maxBytes = options.maxBytes ?? Number.POSITIVE_INFINITY;
 
   // Keyed on the id, not the object.
   //
@@ -58,6 +76,14 @@ export function useClipPayload(clip: Clip | null): ClipPayload {
       return;
     }
 
+    // Declined before the request rather than after: the caller already knows
+    // the size from the clip, so asking and discarding would move bytes for a
+    // picture nobody was going to draw.
+    if (payload.size > maxBytes) {
+      setState({ imageUrl: null, loading: false, tooLarge: true });
+      return;
+    }
+
     // Guards a late response for a clip the reader has already moved off,
     // which would otherwise paint the wrong picture into the panel.
     let live = true;
@@ -77,7 +103,7 @@ export function useClipPayload(clip: Clip | null): ClipPayload {
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, maxBytes]);
 
   return state;
 }

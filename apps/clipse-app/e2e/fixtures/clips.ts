@@ -43,6 +43,31 @@ function pngPayload() {
   };
 }
 
+/**
+ * A blob-backed image: a body carrying no bytes, and a declared size past
+ * `INLINE_MAX_BYTES`.
+ *
+ * This is what a screenshot actually looks like on the wire, and until
+ * `GetPayload` existed the UI could only print its size. The stub serves the
+ * bytes from `BLOB_BYTES`, keyed by digest, the way the daemon serves them
+ * from the content-addressed store.
+ */
+export const SCREENSHOT_DIGEST = "3".repeat(64);
+
+function blobImagePayload(size: number) {
+  return {
+    format: "Png" as const,
+    digest: SCREENSHOT_DIGEST,
+    size,
+    body: "Blob" as const,
+  };
+}
+
+/** Digest → base64, standing in for the daemon's blob store. */
+export const BLOB_BYTES: Record<string, string> = {
+  [SCREENSHOT_DIGEST]: TINY_PNG_BASE64,
+};
+
 function fileListPayload(paths: string[]) {
   const bytes = Array.from(new TextEncoder().encode(paths.join("\n")));
   return {
@@ -98,6 +123,20 @@ export const FIXTURE_CLIPS: Clip[] = [
     hlc: hlc(NOW - 2 * 60 * 60_000, DEVICE_B),
     created_at_ms: NOW - 2 * 60 * 60_000,
     pinned: true,
+    deleted: false,
+  },
+  {
+    id: "aaaaaaaa-0000-4000-8000-000000000006",
+    hash: "e".repeat(64),
+    kind: "image",
+    // 900KB: over INLINE_MAX_BYTES so it is blob-backed, under the row's
+    // thumbnail cap so it is fetched rather than declined.
+    payloads: [blobImagePayload(900_000)],
+    preview: "Screenshot · 879 KB",
+    source: source(DEVICE_A, "MacBook Pro"),
+    hlc: hlc(NOW - 150 * 60_000, DEVICE_A),
+    created_at_ms: NOW - 150 * 60_000,
+    pinned: false,
     deleted: false,
   },
   {

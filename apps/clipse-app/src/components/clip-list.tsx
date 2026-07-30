@@ -12,6 +12,7 @@ export interface ClipListProps {
   onTogglePin?: (clip: Clip) => void;
   onCopy?: (clip: Clip) => void;
   onDelete?: (clip: Clip) => void;
+  onPeek?: (clip: Clip, index: number) => void;
   compact?: boolean;
   onNearEnd?: () => void;
   /** Rows within the first nine get a Ctrl+N badge (popup only). */
@@ -31,6 +32,7 @@ export function ClipList({
   onTogglePin,
   onCopy,
   onDelete,
+  onPeek,
   compact = false,
   onNearEnd,
   showShortcutBadges = false,
@@ -74,6 +76,7 @@ export function ClipList({
             onTogglePin={onTogglePin && (() => onTogglePin(item))}
             onCopy={onCopy && (() => onCopy(item))}
             onDelete={onDelete && (() => onDelete(item))}
+            onPeek={onPeek && (() => onPeek(item, index))}
             style={{ top: index * itemHeight, height: itemHeight }}
           />
         ))}

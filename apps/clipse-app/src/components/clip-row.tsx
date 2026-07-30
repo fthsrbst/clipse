@@ -1,8 +1,9 @@
-import { getClipImageDataUrl, hasBlobPayload, humanBytes } from "../lib/clip-content";
+import { humanBytes } from "../lib/clip-content";
 import { formatRelativeTime } from "../lib/relative-time";
+import { THUMBNAIL_MAX_BYTES, useClipPayload } from "../hooks/use-clip-payload";
 import { KindIcon } from "./kind-icon";
 import { KindGlyph } from "./kind-glyph";
-import { CopyIcon, PinFilledIcon, PinIcon, TrashIcon } from "./icons";
+import { CopyIcon, ExpandIcon, PinFilledIcon, PinIcon, TrashIcon } from "./icons";
 import type { Clip } from "../types/ipc";
 import styles from "./clip-row.module.css";
 
@@ -17,6 +18,8 @@ export interface ClipRowProps {
   onTogglePin?: () => void;
   onCopy?: () => void;
   onDelete?: () => void;
+  /** Opens the detail panel. Absent in the popup, which has no room for one. */
+  onPeek?: () => void;
   /** Popup rows omit the per-row action buttons — Enter/click already does
    * the one thing the popup is for. */
   compact?: boolean;
@@ -31,11 +34,17 @@ export function ClipRow({
   onTogglePin,
   onCopy,
   onDelete,
+  onPeek,
   compact = false,
   style,
 }: ClipRowProps) {
-  const imageSrc = clip.kind === "image" ? getClipImageDataUrl(clip) : undefined;
-  const isUnfetchedBlob = clip.kind === "image" && !imageSrc && hasBlobPayload(clip);
+  // Inline images arrive with the clip; anything bigger has to be fetched, and
+  // "anything bigger" is every screenshot. Before `GetPayload` existed this row
+  // could only ever print a file size where the picture should be.
+  const { imageUrl, tooLarge } = useClipPayload(clip.kind === "image" ? clip : null, {
+    maxBytes: THUMBNAIL_MAX_BYTES,
+  });
+  const isUnfetchedBlob = clip.kind === "image" && !imageUrl;
 
   const rowClass = [styles.row, selected ? styles.selected : "", compact ? styles.compact : ""]
     .filter(Boolean)
@@ -60,10 +69,12 @@ export function ClipRow({
         {compact ? <KindIcon clip={clip} size={15} /> : <KindGlyph clip={clip} />}
       </span>
 
-      {imageSrc ? (
-        <img src={imageSrc} alt="" className={styles.thumb} />
+      {imageUrl ? (
+        <img src={imageUrl} alt="" className={styles.thumb} />
       ) : isUnfetchedBlob ? (
-        <div className={styles.thumbPlaceholder}>{humanBytes(clip.payloads[0]?.size ?? 0)}</div>
+        <div className={styles.thumbPlaceholder} title={tooLarge ? "Too large to thumbnail" : ""}>
+          {humanBytes(clip.payloads[0]?.size ?? 0)}
+        </div>
       ) : null}
 
       {/* In the history the row is set as columns, so the device and the time
@@ -93,6 +104,22 @@ export function ClipRow({
 
       {!compact && (
         <div className={styles.actions}>
+          {/* The panel had no affordance at all — it opened on Right and
+            * nothing on screen said so, which is the same as not existing. */}
+          {onPeek && (
+            <button
+              type="button"
+              className={styles.actionBtn}
+              aria-label="Open detail"
+              title="Open detail (→)"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPeek();
+              }}
+            >
+              <ExpandIcon size={14} />
+            </button>
+          )}
           {onTogglePin && (
             <button
               type="button"

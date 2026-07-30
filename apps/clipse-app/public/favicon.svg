@@ -4,6 +4,6 @@
        `lib/ascii-logotype.ts` draws. This file was still the amber-palette
        version — an amber corona over a #12141F disc — long after the product
        moved to one red on a green-black void. -->
-  <rect width="32" height="32" fill="#06180F"/>
+  <rect width="32" height="32" fill="#020806"/>
   <circle cx="16" cy="16" r="10" fill="none" stroke="#FB3640" stroke-width="4.5"/>
 </svg>

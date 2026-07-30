@@ -41,6 +41,19 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+/** Opens the detail panel. Two corners rather than an eye: the panel does not
+ * hide anything, it gives a clip the room a one-line row cannot. */
+export function ExpandIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14 4h6v6" />
+      <path d="M10 20H4v-6" />
+      <path d="M20 4l-7 7" />
+      <path d="M4 20l7-7" />
+    </Svg>
+  );
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return (
     <Svg {...props}>

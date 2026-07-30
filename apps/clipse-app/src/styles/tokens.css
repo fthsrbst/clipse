@@ -1,7 +1,7 @@
 /* Clipse design tokens.
  *
- * The room is almost black and green — #06180F, the colour of a screen that is
- * off — and exactly one thing in it is red. Nothing else is coloured.
+ * The room is black with a green cast — #020806, the colour of a screen that
+ * is off — and exactly one thing in it is red. Nothing else is coloured.
  * That is the whole system: an interface you can read in a dark room, where the
  * only saturated pixel is the thing that just happened, the thing you selected,
  * or the thing you should not have copied.
@@ -24,20 +24,19 @@
    * Near-blacks with a green cast. Pure greys read as "unstyled"; this reads
    * as a deliberate room.
    *
-   * The cast is deliberately above the threshold where it survives a real
-   * screen. The first version of this ramp put the canvas at #000F08 — green
-   * on paper, and indistinguishable from black on anything but a good panel in
-   * a dark room, which meant the one decision the palette is built on was
-   * invisible. Raised until the green is legible as green while the room is
-   * still unmistakably dark. */
-  --void-1000: #01100A;
-  --void-950: #06180F;
-  --void-900: #0A2016;
-  --void-850: #0E271B;
-  --void-800: #123021;
-  --void-700: #1A3D2C;
-  --void-600: #244D39;
-  --void-500: #33604A;
+   * Black first, green second. This ramp has been wrong in both directions:
+   * at #000F08 the cast was invisible on anything but a good panel, and the
+   * correction overshot into a room that read as green rather than as black.
+   * The target is a black you would call black, that turns out to be green
+   * when you hold something neutral next to it. */
+  --void-1000: #000302;
+  --void-950: #020806;
+  --void-900: #050C09;
+  --void-850: #07110C;
+  --void-800: #0A1610;
+  --void-700: #102019;
+  --void-600: #1A2F24;
+  --void-500: #274232;
 
   /* ---- Palette: signal ---------------------------------------------------
    * One hue, used sparingly and never decoratively. */
@@ -69,8 +68,8 @@
   /* Raised with the void ramp. Structure here comes from hairlines, so a rule
    * that sinks into the canvas does not merely look weak — it removes the only
    * thing separating one row from the next. */
-  --color-rule: #17382A;
-  --color-rule-strong: #265440;
+  --color-rule: #132A1F;
+  --color-rule-strong: #1F4130;
   --color-border: var(--color-rule);
   --color-border-strong: var(--color-rule-strong);
 

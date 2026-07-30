@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { FIXTURE_CLIPS, FIXTURE_SETTINGS, FIXTURE_STATUS } from "./fixtures/clips";
+import { BLOB_BYTES, FIXTURE_CLIPS, FIXTURE_SETTINGS, FIXTURE_STATUS } from "./fixtures/clips";
 import { installTauriStub, type TauriStubOptions } from "./fixtures/tauri-stub";
 
 test.beforeEach(async ({ page }) => {
@@ -8,6 +8,7 @@ test.beforeEach(async ({ page }) => {
     status: FIXTURE_STATUS,
     settings: FIXTURE_SETTINGS,
     windowLabel: "main",
+    blobs: BLOB_BYTES,
   });
   await page.goto("/");
 });
@@ -66,6 +67,31 @@ test("the detail panel opens on Right and closes on Escape", async ({ page }) =>
 
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
+});
+
+// A screenshot is blob-backed — its payload body carries no bytes at all — so
+// before `GetPayload` the row could only ever print a file size where the
+// picture should be. Asserting on the `src` is the only way to tell a fetched
+// thumbnail from the placeholder that replaced it.
+test("a blob-backed screenshot is fetched and shown as a thumbnail", async ({ page }) => {
+  const row = page.getByRole("option").filter({ hasText: "Screenshot" });
+  const thumb = row.locator("img");
+
+  await expect(thumb).toBeVisible();
+  await expect(thumb).toHaveAttribute("src", /^data:image\/png;base64,/);
+});
+
+test("the detail panel can be opened without knowing the keyboard shortcut", async ({ page }) => {
+  const panel = page.getByRole("complementary", { name: "Clip detail" });
+  await expect(panel).toBeHidden();
+
+  // The panel used to open on Right and nothing on screen said so, which for
+  // anyone who did not read the commit is the same as it not existing.
+  const row = page.getByRole("option").first();
+  await row.hover();
+  await row.getByRole("button", { name: "Open detail" }).click();
+
+  await expect(panel).toBeVisible();
 });
 
 test("settings keeps the spine mounted and returns on Escape", async ({ page }) => {

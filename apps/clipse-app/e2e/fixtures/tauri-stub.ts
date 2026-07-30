@@ -7,6 +7,9 @@ export interface TauriStubOptions {
   /** Which Tauri window this page should present itself as — drives
    * `App.tsx`'s choice between the History window and the popup. */
   windowLabel: "main" | "popup";
+  /** Digest → base64, standing in for the daemon's content-addressed store.
+   * Without it a blob-backed payload has nowhere to come from. */
+  blobs?: Record<string, string>;
   /**
    * Whether this page should behave as a first run.
    *
@@ -98,12 +101,13 @@ export function installTauriStub(options: TauriStubOptions): void {
         return clips.find((c) => c.id === args.id) ?? null;
 
       case "get_payload": {
-        // The fixture has no blob store, so a Blob body answers null — which is
-        // the same answer the real daemon gives past its preview cap, and
-        // exercises the panel's "here is the size instead" path.
         const clip = clips.find((c) => c.id === args.id);
         const payload = clip?.payloads.find((p) => p.format === args.format);
-        if (!payload || payload.body === "Blob") return null;
+        if (!payload) return null;
+        // A blob body carries no bytes; they come from the store, keyed by
+        // digest, exactly as the daemon serves them. A digest with nothing
+        // behind it answers null, which is the "too large to preview" path.
+        if (payload.body === "Blob") return options.blobs?.[payload.digest] ?? null;
         let binary = "";
         for (const byte of payload.body.Inline) binary += String.fromCharCode(byte);
         return btoa(binary);

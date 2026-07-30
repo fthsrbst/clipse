@@ -54,6 +54,29 @@ describe("useClipPayload", () => {
     expect(result.current.tooLarge).toBe(true);
   });
 
+  it("declines a payload over the caller's own cap without asking", async () => {
+    // A list of rows must not each pull a screenshot over IPC. The size is on
+    // the clip already, so the request is skipped rather than made and thrown
+    // away.
+    const { result } = renderHook(() =>
+      useClipPayload(imageClip("Blob", 9_000_000), { maxBytes: 4 * 1024 * 1024 }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(getPayload).not.toHaveBeenCalled();
+    expect(result.current.tooLarge).toBe(true);
+    expect(result.current.imageUrl).toBeNull();
+  });
+
+  it("still fetches a payload under the caller's cap", async () => {
+    getPayload.mockResolvedValue("aGk=");
+    const { result } = renderHook(() =>
+      useClipPayload(imageClip("Blob", 500_000), { maxBytes: 4 * 1024 * 1024 }),
+    );
+
+    await waitFor(() => expect(result.current.imageUrl).toBe("data:image/png;base64,aGk="));
+  });
+
   it("asks for nothing at all when there is no clip to show", () => {
     const { result } = renderHook(() => useClipPayload(null));
 
