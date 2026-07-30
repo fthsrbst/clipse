@@ -18,6 +18,27 @@ use clipse_ipc::protocol::{Event, Request, Response};
 use clipse_ipc::{Client, IPC_VERSION};
 use tempfile::TempDir;
 
+/// Serialises everything that touches the machine's one clipboard.
+///
+/// Two kinds of test contend for it: the ones that *write* it, and the ones that
+/// start a daemon and then assert on what the daemon saw. `cargo test` runs both
+/// in parallel by default, so a writer's copy lands in an unrelated daemon's
+/// history — which is exactly how `a fresh data dir starts empty` failed on CI
+/// while passing on every developer machine.
+///
+/// This lives at file scope rather than inside the Windows-only `clipboard`
+/// module because the tests on both sides of the conflict do not: the clipboard
+/// writers are in that module, and the daemon that gets confused by them is not.
+///
+/// Poisoning is ignored on purpose. One panicking test should fail by itself
+/// rather than cascade into every test that takes this lock after it.
+fn clipboard_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Kills the daemon when the test ends, including on panic — otherwise a
 /// failing assertion would leave a process holding the machine's clipboard
 /// listener.
@@ -62,7 +83,13 @@ async fn connect(endpoint: &str) -> Client {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+// Held across awaits deliberately: the point is to exclude other tests for the
+// whole body, and these are `#[tokio::test]` functions on separate runtimes
+// rather than tasks competing for one, so nothing can deadlock on it.
+#[allow(clippy::await_holding_lock)]
 async fn daemon_starts_serves_status_and_persists_settings() {
+    // Asserts the history is empty, so no clipboard writer may run alongside it.
+    let _clipboard = clipboard_test_lock();
     let dir = TempDir::new().unwrap();
     let (_daemon, endpoint) = start_daemon(&dir).await;
     let mut client = connect(&endpoint).await;
@@ -143,16 +170,6 @@ mod clipboard {
     /// Win32 directly rather than `Set-Clipboard`: PowerShell's cmdlet reports
     /// failures it did not have and swallows ones it did, which made this test
     /// lie in both directions.
-    /// These tests take over the machine's one clipboard, so they must not run
-    /// alongside each other — two interleaving would each see the other's
-    /// copies. Held for the whole body of every clipboard test.
-    fn clipboard_test_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
     fn with_clipboard<T>(what: &str, f: impl Fn() -> T) -> T {
         for _ in 0..40 {
             if unsafe { OpenClipboard(None) }.is_ok() {
