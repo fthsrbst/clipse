@@ -1,0 +1,140 @@
+.spine {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  /* The mark is 15 characters wide, so at a 7px cell it wants ~63px. 4.75rem
+   * leaves it a hairline of air on both sides without letting the rail grow
+   * into a sidebar. */
+  width: 4.75rem;
+  padding: 1rem 0 0.75rem;
+  /* A rule, not a border: structure in this product comes from hairlines and
+   * space. */
+  border-right: 1px solid var(--color-rule);
+  background: var(--color-surface-sunken);
+  flex-shrink: 0;
+}
+
+.mark {
+  color: var(--color-ink-muted);
+}
+
+/* Set up the edge like a book spine, which is where the device comes from. */
+.wordmark {
+  writing-mode: vertical-rl;
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-ink-secondary);
+}
+
+/* Claims whatever is left below the content, and is the drag region precisely
+ * because it is slack. */
+.drag {
+  flex: 1;
+  align-self: stretch;
+  min-height: 1.5rem;
+}
+
+.meter,
+.refused,
+.state,
+.foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+/* The one big number in the product: it answers "did that copy land", which is
+ * the question the window exists for, so it is allowed to be loud. */
+.count {
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  font-size: var(--type-lg);
+  line-height: var(--leading-crushed);
+  letter-spacing: var(--tracking-crushed);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.refusedCount {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink-muted);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* Reserved whether or not there is state to report, so the blocks above it do
+ * not shift when the daemon is paused. */
+.state {
+  min-height: 1rem;
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.paused {
+  color: var(--color-accent-ink);
+}
+
+.loading {
+  color: var(--color-ink-muted);
+}
+
+.foot {
+  gap: 0.6rem;
+  padding-top: 0.25rem;
+}
+
+.peers {
+  display: flex;
+  gap: 3px;
+}
+
+.dotOn,
+.dotOff {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+}
+
+.dotOn {
+  background: var(--color-success);
+}
+
+.dotOff {
+  background: var(--color-rule-strong);
+}
+
+.settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.settings:hover,
+.settings.on {
+  color: var(--color-ink);
+}

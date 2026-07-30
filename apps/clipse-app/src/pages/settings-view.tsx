@@ -5,6 +5,7 @@ import { TagListInput } from "../components/tag-list-input";
 import { PairingPanel } from "../components/pairing-panel";
 import { CaptureModeBanner } from "../components/capture-mode-banner";
 import { DaemonOfflineState } from "../components/daemon-offline-state";
+import { WindowControls } from "../components/window-controls";
 import { EmptyState } from "../components/empty-state";
 import { useSettings } from "../hooks/use-settings";
 import type { DaemonStatus, Settings } from "../types/ipc";
@@ -13,11 +14,13 @@ import styles from "./settings-view.module.css";
 const GB = 1024 * 1024 * 1024;
 
 export interface SettingsViewProps {
-  onBack: () => void;
   status: DaemonStatus | null;
 }
 
-export function SettingsView({ onBack, status }: SettingsViewProps) {
+/** The second view of the history window, not a screen of its own: the spine
+ * stays mounted beside it and owns the navigation, so there is no back button
+ * here to draw. Escape returns — see `history-window.tsx`. */
+export function SettingsView({ status }: SettingsViewProps) {
   const { settings, loading, saving, offline, errorMessage, save } = useSettings();
   const [draft, setDraft] = useState<Settings | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -45,12 +48,10 @@ export function SettingsView({ onBack, status }: SettingsViewProps) {
 
   return (
     <div className={styles.window}>
-      <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={onBack}>
-          ← Back
-        </button>
+      <header className={styles.header} data-tauri-drag-region>
         <span className={styles.title}>Settings</span>
-        <span aria-hidden="true" />
+        <span className={styles.hint}>esc to close</span>
+        <WindowControls />
       </header>
 
       <div className={styles.body}>

@@ -1,36 +1,33 @@
+/* No longer a window of its own: this fills the history window's content
+ * column, beside the spine that stays mounted. */
 .window {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 0;
+  flex: 1;
   background: var(--color-canvas);
 }
 
-/* A masthead, like the history window's: the title is display type hard against
- * the left edge, not centred chrome. */
+/* A masthead, like the history window's: the title is display type hard
+ * against the left edge, not centred chrome. It is also the drag region, and
+ * carries the window controls, because there is no title bar above it. */
 .header {
   display: flex;
   align-items: baseline;
   gap: 1.25rem;
-  padding: 1.15rem 1.25rem 0.85rem;
+  padding: 1.15rem 0.75rem 0.85rem 1.5rem;
   border-bottom: 1px solid var(--color-rule);
   flex-shrink: 0;
 }
 
-.back {
-  border: none;
-  background: transparent;
-  color: var(--color-ink-secondary);
-  font: inherit;
-  font-size: var(--type-sm);
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
-}
-
-.back:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-ink);
+/* Says how to leave, now that there is no back button to point at. */
+.hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink-muted);
 }
 
 .title {

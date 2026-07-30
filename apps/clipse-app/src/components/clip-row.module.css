@@ -72,7 +72,25 @@
 .kind {
   flex-shrink: 0;
   display: inline-flex;
+  justify-content: center;
+  width: 1.1rem;
   color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+/* Inset into the padding rather than at the very edge, so it never collides
+ * with the full-height selection marker on `.row::before`. Softer than the
+ * accent too: a selected row and a pinned row must not both read as "the one
+ * red thing". */
+.pinTick {
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 1.1rem;
+  background: var(--color-accent-ink);
 }
 
 .thumb {
@@ -134,15 +152,39 @@
   opacity: 0.6;
 }
 
-.device {
+/* Fixed widths so the columns line up down the whole list. Without them each
+ * row would size to its own content and the list would read as ragged
+ * captions instead of a table of what you have copied. */
+.device,
+.time {
+  flex-shrink: 0;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.pinnedGlyph {
-  flex-shrink: 0;
-  color: var(--color-accent-ink);
+.device {
+  width: 6rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+/* Deliberately not uppercased. "3d ago" set in caps reads as "3D AGO" — the
+ * unit collides with the abbreviation for three dimensions, and the eye
+ * resolves it wrongly before it resolves it right. */
+.time {
+  width: 4.5rem;
+  text-align: right;
+  letter-spacing: var(--tracking-wide);
+}
+
+/* Inside `.meta` (the popup's stacked layout) these are inline and must not
+ * claim a column width. */
+.meta .device {
+  width: auto;
 }
 
 .actions {

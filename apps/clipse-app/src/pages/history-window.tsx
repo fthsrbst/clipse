@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react";
-import { AsciiLogo } from "../components/ascii-logo";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Spine } from "../components/spine";
 import { SearchBox } from "../components/search-box";
 import { TypeFilterTabs } from "../components/type-filter-tabs";
 import { ClipList } from "../components/clip-list";
@@ -8,7 +8,7 @@ import { DaemonOfflineState } from "../components/daemon-offline-state";
 import { CaptureModeBanner } from "../components/capture-mode-banner";
 import { ResizeHandles } from "../components/resize-handles";
 import { WindowControls } from "../components/window-controls";
-import { PinFilledIcon, PinIcon, SettingsIcon } from "../components/icons";
+import { PinFilledIcon, PinIcon } from "../components/icons";
 import { useClipHistory } from "../hooks/use-clip-history";
 import { useDaemonConnection } from "../hooks/use-daemon-connection";
 import { api } from "../lib/tauri-client";
@@ -43,6 +43,17 @@ export function HistoryWindow() {
     if (countRef.current) countTo(countRef.current, history.clips.length);
   }, [history.clips.length]);
 
+  // Escape leaves settings. There is no back button to draw now that the spine
+  // holds the navigation, so the key has to carry it.
+  useEffect(() => {
+    if (view !== "settings") return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setView("history");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view]);
+
   async function handleCopy(clip: Clip) {
     try {
       await api.apply(clip.id);
@@ -70,58 +81,50 @@ export function HistoryWindow() {
     }
   }
 
-  if (view === "settings") {
-    return <SettingsView onBack={() => setView("history")} status={status} />;
-  }
-
   return (
     <div className={styles.window} ref={root}>
       <ResizeHandles />
 
-      {/* Deliberately not a centred title bar. The wordmark sits hard against
-       * the left edge and the count is set as display type on the right, so the
-       * top of the window reads as a masthead rather than a toolbar — and with
-       * the OS decorations gone, it is also the frame: this row is the drag
-       * region. */}
-      <header className={styles.header} data-tauri-drag-region data-enter>
-        <div className={styles.brand}>
-          <AsciiLogo variant="mark" cell={5} />
-          <span className={styles.title}>Clipse</span>
-        </div>
+      {/* Mounted once and kept across both views: settings is a second view of
+       * this window, not a screen you leave for — which is what removes the
+       * need for a back button. */}
+      <Spine
+        clipCount={history.clips.length}
+        secretsRefused={status?.secrets_refused ?? 0}
+        paused={status?.paused ?? false}
+        loadingMore={history.loadingMore}
+        peersOnline={status?.peers_online ?? 0}
+        peersTotal={status?.peers_total ?? 0}
+        settingsActive={view === "settings"}
+        onToggleSettings={() => setView(view === "settings" ? "history" : "settings")}
+        countRef={countRef}
+      />
 
-        <div className={styles.meter}>
-          <span className={styles.count} data-numeric ref={countRef}>
-            {history.clips.length}
-          </span>
-          <span className={styles.countLabel}>
-            {history.clips.length === 1 ? "clip" : "clips"}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          className={styles.iconButton}
-          aria-label="Settings"
-          onClick={() => setView("settings")}
-        >
-          <SettingsIcon size={17} />
-        </button>
-
-        <WindowControls />
-      </header>
-
-      <div className={styles.toolbar} data-enter>
-        <SearchBox value={history.searchText} onChange={history.setSearchText} />
+      <div className={styles.main}>
+        {view === "settings" ? (
+          <SettingsView status={status} />
+        ) : (
+          <>
+      {/* No title bar and no toolbar. One row carries search, the filters and
+       * the window controls, and the space around it is the drag region — so
+       * the frame costs no vertical space of its own. */}
+      <div className={styles.top} data-tauri-drag-region data-enter>
+        <SearchBox
+          value={history.searchText}
+          onChange={history.setSearchText}
+          placeholder="Search everything you've copied"
+        />
         <TypeFilterTabs value={history.typeFilter} onChange={history.setTypeFilter} />
         <button
           type="button"
-          className={history.pinnedOnly ? `${styles.iconButton} ${styles.active}` : styles.iconButton}
+          className={history.pinnedOnly ? `${styles.pinToggle} ${styles.active}` : styles.pinToggle}
           aria-label="Show pinned only"
           aria-pressed={history.pinnedOnly}
           onClick={() => history.setPinnedOnly(!history.pinnedOnly)}
         >
-          {history.pinnedOnly ? <PinFilledIcon size={16} /> : <PinIcon size={16} />}
+          {history.pinnedOnly ? <PinFilledIcon size={15} /> : <PinIcon size={15} />}
         </button>
+        <WindowControls />
       </div>
 
       {status?.capture_mode && status.capture_mode !== "Automatic" && (
@@ -164,16 +167,9 @@ export function HistoryWindow() {
           />
         )}
       </main>
-
-      {/* The count moved to the masthead, where it is set as display type. What
-       * is left here is state, and only when there is state worth reporting —
-       * an empty status bar is a line of chrome earning nothing. */}
-      {(status?.paused || history.loadingMore) && (
-        <footer className={styles.footer} data-enter>
-          {status?.paused && <span className={styles.paused}>Paused</span>}
-          {history.loadingMore && <span>Loading more…</span>}
-        </footer>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,73 +1,29 @@
+/* Two columns: the spine holds every piece of chrome the window has, and the
+ * content gets all the rest. There is no header row and no footer row, which
+ * is what leaves a frameless window with no title bar to reconcile. */
 .window {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto 1fr;
   height: 100vh;
   background: var(--color-canvas);
+  overflow: hidden;
 }
 
-/* A masthead, not a title bar: wordmark hard left, the count set as display
- * type on the right, and the settings control small and last. The asymmetry is
- * the point — a centred title would make this a dialog. */
-.header {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: end;
-  gap: 1rem;
-  padding: 1.15rem 0.75rem 0.85rem 1.25rem;
-  border-bottom: 1px solid var(--color-rule);
-  flex-shrink: 0;
-}
-
-/* The one big number in the product. It answers "did that copy land", which is
- * the question the window exists for, so it is allowed to be loud. */
-.meter {
+.main {
   display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 0.45rem;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
-.count {
-  font-family: var(--font-display);
-  font-weight: var(--weight-display);
-  font-size: var(--type-xl);
-  line-height: 0.8;
-  letter-spacing: var(--tracking-crushed);
-  color: var(--color-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.countLabel {
-  font-family: var(--font-mono);
-  font-size: var(--type-2xs);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  color: var(--color-ink-muted);
-}
-
-/* The mark is sized in em against this, so the font-size lives on the wrapper
- * and baseline alignment does the rest. */
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 0.55rem;
-  font-size: var(--type-lg);
-}
-
-.title {
-  font-family: var(--font-display);
-  font-size: 1em;
-  font-weight: var(--weight-display);
-  color: var(--color-ink);
-  letter-spacing: var(--tracking-crushed);
-}
-
-.toolbar {
+/* The search row is the masthead. The generous padding above it is what makes
+ * a drag region out of space the composition wanted anyway. */
+.top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 0.9rem;
+  padding: 1rem 0.75rem 0.85rem 1.5rem;
+  border-bottom: 1px solid var(--color-rule);
   flex-shrink: 0;
 }
 
@@ -86,30 +42,29 @@
   font-size: var(--type-xs);
 }
 
-.iconButton {
+/* A glyph, not a button. In a row of unboxed type a bordered square reads as
+ * something bolted on from a different interface. */
+.pinToggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 1.9rem;
+  height: 1.9rem;
   flex-shrink: 0;
-  border: 1px solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-ink-secondary);
+  background: none;
+  color: var(--color-ink-muted);
   cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
-.iconButton:hover {
-  background: var(--color-surface-hover);
+.pinToggle:hover {
   color: var(--color-ink);
 }
 
-.iconButton.active {
+.pinToggle.active {
   color: var(--color-accent-ink);
-  background: var(--color-accent-soft);
-  border-color: transparent;
 }
 
 .body {
@@ -118,18 +73,5 @@
   min-height: 0;
 }
 
-.footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px;
-  border-top: 1px solid var(--color-border);
-  color: var(--color-ink-muted);
-  font-size: var(--type-xs);
-  flex-shrink: 0;
-}
-
-.paused {
-  color: var(--color-accent-ink);
-  font-weight: 500;
-}
+/* There is no footer. `Paused` and `Loading more` live in the spine now — an
+ * empty status bar is a row of chrome earning nothing. */
