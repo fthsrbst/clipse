@@ -6,6 +6,8 @@ import { ClipList } from "../components/clip-list";
 import { EmptyState } from "../components/empty-state";
 import { DaemonOfflineState } from "../components/daemon-offline-state";
 import { CaptureModeBanner } from "../components/capture-mode-banner";
+import { ResizeHandles } from "../components/resize-handles";
+import { WindowControls } from "../components/window-controls";
 import { PinFilledIcon, PinIcon, SettingsIcon } from "../components/icons";
 import { useClipHistory } from "../hooks/use-clip-history";
 import { useDaemonConnection } from "../hooks/use-daemon-connection";
@@ -74,10 +76,14 @@ export function HistoryWindow() {
 
   return (
     <div className={styles.window} ref={root}>
+      <ResizeHandles />
+
       {/* Deliberately not a centred title bar. The wordmark sits hard against
        * the left edge and the count is set as display type on the right, so the
-       * top of the window reads as a masthead rather than a toolbar. */}
-      <header className={styles.header} data-enter>
+       * top of the window reads as a masthead rather than a toolbar — and with
+       * the OS decorations gone, it is also the frame: this row is the drag
+       * region. */}
+      <header className={styles.header} data-tauri-drag-region data-enter>
         <div className={styles.brand}>
           <AsciiLogo variant="mark" cell={5} />
           <span className={styles.title}>Clipse</span>
@@ -100,6 +106,8 @@ export function HistoryWindow() {
         >
           <SettingsIcon size={17} />
         </button>
+
+        <WindowControls />
       </header>
 
       <div className={styles.toolbar} data-enter>

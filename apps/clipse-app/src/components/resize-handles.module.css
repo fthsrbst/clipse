@@ -1,0 +1,41 @@
+/* 8px: the smallest target that can be hit reliably without the grips stealing
+ * clicks from the content behind them. Corners get 12px because they are the
+ * ones people aim for when they want both axes at once. */
+.handle {
+  position: fixed;
+  z-index: 10;
+}
+
+.n,
+.s {
+  left: 8px;
+  right: 8px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.e,
+.w {
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.n { top: 0; }
+.s { bottom: 0; }
+.e { right: 0; }
+.w { left: 0; }
+
+.ne,
+.nw,
+.se,
+.sw {
+  width: 12px;
+  height: 12px;
+}
+
+.nw { top: 0; left: 0; cursor: nwse-resize; }
+.se { bottom: 0; right: 0; cursor: nwse-resize; }
+.ne { top: 0; right: 0; cursor: nesw-resize; }
+.sw { bottom: 0; left: 0; cursor: nesw-resize; }

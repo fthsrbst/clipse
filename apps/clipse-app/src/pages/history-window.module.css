@@ -10,10 +10,10 @@
  * the point — a centred title would make this a dialog. */
 .header {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: end;
   gap: 1rem;
-  padding: 1.15rem 1.25rem 0.85rem;
+  padding: 1.15rem 0.75rem 0.85rem 1.25rem;
   border-bottom: 1px solid var(--color-rule);
   flex-shrink: 0;
 }

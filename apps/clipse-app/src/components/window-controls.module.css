@@ -1,0 +1,36 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  /* Lifted above the drag region: inside it, a click would start a window drag
+   * instead of pressing the button under the cursor. */
+  position: relative;
+  z-index: 1;
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: 1;
+  cursor: default;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.control:hover {
+  color: var(--color-ink);
+}
+
+/* The only red in the frame, and only while it is about to happen. */
+.close:hover {
+  color: var(--color-accent);
+}

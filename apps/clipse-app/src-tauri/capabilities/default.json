@@ -5,6 +5,12 @@
   "windows": ["main", "popup"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
   ]
 }
