@@ -177,6 +177,19 @@ including anything that does not work:
 7. Launching a second copy focuses the first window instead of opening another
    — the half of the single-instance guard that has no test.
 
+**2026-07-30, Windows 11 — item 7 only.** Uninstalled 0.1.0, installed the
+0.2.0 NSIS build, launched it, then launched it again from the same path. The
+process count stayed at 1, so the guard holds in a real installed build and not
+just in the unit test for `should_reveal`. Items 1–6 are still unrun: they need
+a hand on the mouse, and the run that would have shown them was refused screen
+access.
+
+Worth recording separately: the 0.1.0 uninstaller removed
+`%LOCALAPPDATA%\Clipse` and left `%APPDATA%\clipse\Clipse\data` untouched, so
+history, `config.toml` and `identity.json` all survived. Device identity
+surviving an upgrade is what stops an upgrade from silently unpairing every
+other machine.
+
 ## F4 — packaging
 
 Install from the built artefact on a clean machine per platform. The installer
