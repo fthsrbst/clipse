@@ -22,6 +22,7 @@ fn status(device: DeviceId) -> DaemonStatus {
         blob_quota_bytes: 1024,
         peers_online: 0,
         peers_total: 0,
+        secrets_refused: 7,
     }
 }
 

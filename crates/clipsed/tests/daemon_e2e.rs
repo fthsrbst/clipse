@@ -333,6 +333,21 @@ mod clipboard {
             "the suppression reason leaked the secret: {suppressed}"
         );
 
+        // The count is the only record a refusal leaves, and it is what the
+        // window shows. Asserted here rather than in a unit test because the
+        // thing worth proving is that a *real* suppression reaches it — and
+        // before the marker copy below, while the history is still empty.
+        match client.call(Request::Status).await.unwrap() {
+            Response::Status(status) => {
+                assert_eq!(status.secrets_refused, 1);
+                assert_eq!(
+                    status.clip_count, 0,
+                    "nothing about the refused copy reached the store"
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+
         // Copy something harmless afterwards so we know the daemon kept
         // running and the history simply does not contain the key.
         let marker = format!("clipse-after-secret-{}", std::process::id());
@@ -387,8 +402,10 @@ mod clipboard {
 
 #[test]
 fn ipc_version_is_the_one_the_daemon_was_built_against() {
-    // Guards against a client and daemon drifting apart silently.
-    assert_eq!(IPC_VERSION, 1);
+    // Guards against a client and daemon drifting apart silently. Changing
+    // this number is the point at which you confirm the wire really did change
+    // shape -- 2 added `DaemonStatus::secrets_refused`.
+    assert_eq!(IPC_VERSION, 2);
 }
 
 /// Two real daemon processes, paired the way the UI will do it.

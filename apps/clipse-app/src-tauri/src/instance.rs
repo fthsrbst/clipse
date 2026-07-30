@@ -38,6 +38,10 @@ mod tests {
 
     #[test]
     fn the_flag_is_recognised_in_any_position() {
-        assert!(!should_reveal(&argv(&["clipse.exe", "--minimised", "extra"])));
+        assert!(!should_reveal(&argv(&[
+            "clipse.exe",
+            "--minimised",
+            "extra"
+        ])));
     }
 }

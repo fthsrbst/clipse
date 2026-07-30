@@ -137,6 +137,9 @@ export const FIXTURE_STATUS: DaemonStatus = {
   blob_quota_bytes: 2 * 1024 * 1024 * 1024,
   peers_online: 0,
   peers_total: 0,
+  // Non-zero on purpose: the spine renders this, and a fixture of 0 would let
+  // a broken readout pass for an empty one.
+  secrets_refused: 2,
 };
 
 export const FIXTURE_SETTINGS: Settings = {

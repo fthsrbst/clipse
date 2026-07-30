@@ -25,4 +25,8 @@ pub use protocol::{
 /// Bumped when a client and a daemon can no longer understand each other.
 /// Independent of `clipse_core::PROTOCOL_VERSION`, which governs the *network*
 /// format between two daemons.
-pub const IPC_VERSION: u16 = 1;
+///
+/// 2: `DaemonStatus::secrets_refused`. The `Hello` handshake refuses a
+/// mismatch outright (see `client.rs`), so an addition guarded by a bump needs
+/// no optional-field fallback — both sides are guaranteed to agree.
+pub const IPC_VERSION: u16 = 2;

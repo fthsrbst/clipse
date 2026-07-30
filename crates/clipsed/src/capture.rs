@@ -24,6 +24,7 @@ pub async fn run(daemon: Arc<Daemon>, mut events: Receiver<CaptureEvent>) {
                 // the UI.
                 let label = describe(&reason);
                 debug!(reason = %label, "capture suppressed");
+                daemon.note_suppression();
                 daemon.emit(Event::Suppressed { reason: label });
             }
             CaptureEvent::Captured(capture) => {

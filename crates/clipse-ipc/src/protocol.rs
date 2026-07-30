@@ -234,6 +234,13 @@ pub struct DaemonStatus {
     pub blob_quota_bytes: u64,
     pub peers_online: u32,
     pub peers_total: u32,
+    /// Captures dropped for looking like a secret, since this daemon started.
+    ///
+    /// A count, and only a count. Deliberately not persisted: a durable tally
+    /// would mean writing a record about the thing Clipse promised not to
+    /// write down, and "since Clipse started" is an honest answer that costs
+    /// nothing.
+    pub secrets_refused: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

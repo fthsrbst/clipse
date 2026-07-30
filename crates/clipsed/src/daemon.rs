@@ -5,6 +5,7 @@
 //! interface to the store or (in F2) to the network that does not come through
 //! here.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use clipse_clipboard::{Clipboard, WatchMode, Watcher};
@@ -37,6 +38,8 @@ pub struct Daemon {
     /// Everything the pairing requests need. Absent when sync is off, in which
     /// case pairing is refused rather than half-attempted.
     pairing: OnceLock<PairingContext>,
+    /// Process-lifetime only; see `DaemonStatus::secrets_refused`.
+    secrets_refused: AtomicU64,
 }
 
 /// What the pairing requests need in order to do anything.
@@ -79,7 +82,17 @@ impl Daemon {
             events: OnceLock::new(),
             peers: OnceLock::new(),
             pairing: OnceLock::new(),
+            secrets_refused: AtomicU64::new(0),
         }
+    }
+
+    /// Records that a capture was dropped for looking like a secret.
+    ///
+    /// The reason is logged and emitted; only the count is kept, and only in
+    /// memory. Persisting it would mean writing a record about the thing that
+    /// was refused, which is the one thing this product promises never to do.
+    pub fn note_suppression(&self) {
+        self.secrets_refused.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn set_pairing(&self, context: PairingContext) {
@@ -200,6 +213,7 @@ impl Daemon {
             blob_quota_bytes: quota,
             peers_online: online,
             peers_total: total,
+            secrets_refused: self.secrets_refused.load(Ordering::Relaxed),
         }
     }
 

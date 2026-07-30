@@ -89,6 +89,10 @@ export interface DaemonStatus {
   blob_quota_bytes: number;
   peers_online: number;
   peers_total: number;
+  /** Captures dropped for looking like a secret, since the daemon started.
+   * A count only — the daemon never records what it refused, so there is
+   * nothing else it could report. */
+  secrets_refused: number;
 }
 
 export type Connectivity = "Lan" | "Tailnet" | "Offline";

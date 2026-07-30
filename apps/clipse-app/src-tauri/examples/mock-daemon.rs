@@ -246,6 +246,9 @@ async fn status(daemon: &Daemon) -> DaemonStatus {
         blob_quota_bytes: Settings::default().blob_quota_bytes,
         peers_online: 0,
         peers_total: 0,
+        // Non-zero so the spine's readout is exercised when developing against
+        // the mock; a 0 here would look identical to a broken one.
+        secrets_refused: 3,
     }
 }
 
