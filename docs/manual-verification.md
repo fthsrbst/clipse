@@ -152,6 +152,31 @@ positioned from `NSScreen.safeAreaInsets` (verify on an external display too,
 where there is no notch), accepts a drag-and-drop, and animates the source
 device. It must not steal focus from the frontmost app.
 
+## The frameless window
+
+`decorations: false` removed the OS title bar, and with it everything the OS
+was providing for free. None of this can be tested from a headless runner — a
+Playwright page has no window manager, so it proves the controls *render* and
+nothing about what they do.
+
+Run `pnpm tauri dev` and drive all seven, then record the outcome here,
+including anything that does not work:
+
+1. No OS title bar above the masthead.
+2. Dragging the spine's empty middle, or the space around the search row, moves
+   the window.
+3. Double-clicking a drag region toggles maximize.
+4. All four edges and all four corners resize.
+5. Dragging to the top of the screen snaps to maximize; dragging to a side
+   snaps to half. **This is the genuinely uncertain one.** If Tauri's drag
+   emulation does not produce Aero Snap, write that down rather than papering
+   over it — `Win`+arrow still works at the OS level, and a known limitation
+   beats a silent one.
+6. Minimize, maximize and close all work, and close hides to the tray rather
+   than quitting.
+7. Launching a second copy focuses the first window instead of opening another
+   — the half of the single-instance guard that has no test.
+
 ## F4 — packaging
 
 Install from the built artefact on a clean machine per platform. The installer
