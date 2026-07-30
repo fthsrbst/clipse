@@ -97,6 +97,18 @@ export function installTauriStub(options: TauriStubOptions): void {
       case "get_clip":
         return clips.find((c) => c.id === args.id) ?? null;
 
+      case "get_payload": {
+        // The fixture has no blob store, so a Blob body answers null — which is
+        // the same answer the real daemon gives past its preview cap, and
+        // exercises the panel's "here is the size instead" path.
+        const clip = clips.find((c) => c.id === args.id);
+        const payload = clip?.payloads.find((p) => p.format === args.format);
+        if (!payload || payload.body === "Blob") return null;
+        let binary = "";
+        for (const byte of payload.body.Inline) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }
+
       case "apply":
         win.__applyCalls.push(String(args.id));
         return null;

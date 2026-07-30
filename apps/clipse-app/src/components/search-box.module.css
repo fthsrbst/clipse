@@ -9,7 +9,10 @@
   display: flex;
   align-items: center;
   flex: 1;
-  min-width: 0;
+  /* A floor, not zero. Given `min-width: 0` this field is the first thing a
+   * crowded row takes space from, and it collapses all the way to its own
+   * magnifier — which looks like a rendering fault rather than a tight fit. */
+  min-width: 8rem;
 }
 
 .icon {

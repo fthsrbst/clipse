@@ -16,6 +16,17 @@
   min-height: 0;
 }
 
+/* Below the masthead: the list, and the detail panel beside or over it. The
+ * positioning context lives here rather than on `.main` so the panel's overlay
+ * mode can never cover the window controls. */
+.stage {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 /* The search row is the masthead. The generous padding above it is what makes
  * a drag region out of space the composition wanted anyway. */
 .top {

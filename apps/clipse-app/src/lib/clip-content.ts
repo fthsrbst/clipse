@@ -44,9 +44,24 @@ const IMAGE_MIME: Record<string, string> = {
   Svg: "image/svg+xml",
 };
 
+/** The MIME type for a format the UI renders as an image, or `null` for
+ * everything else. */
+export function mimeForFormat(format: ClipFormat): string | null {
+  const label = formatLabel(format);
+  return IMAGE_MIME[label] ?? null;
+}
+
+/** A `data:` URL from base64 the daemon returned for a blob-backed payload.
+ * `null` when the format is not one that can be shown as an image. */
+export function payloadDataUrl(format: ClipFormat, base64: string): string | null {
+  const mime = mimeForFormat(format);
+  return mime ? `data:${mime};base64,${base64}` : null;
+}
+
 /** A `data:` URL for a clip's image payload, if it has one and it is stored
  * inline. Returns `undefined` for a blob-backed image (large screenshot) —
- * callers should show a size-only placeholder in that case. */
+ * callers should fetch it with `api.getPayload` or show a size-only
+ * placeholder. */
 export function getClipImageDataUrl(clip: Clip): string | undefined {
   for (const kind of ["Png", "Jpeg", "Svg"] as const) {
     const payload = findPayload(clip, kind);

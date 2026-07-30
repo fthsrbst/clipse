@@ -50,6 +50,24 @@ test("the refused-secrets count is reported without any content", async ({ page 
   await expect(page.getByText(String(FIXTURE_STATUS.secrets_refused), { exact: true })).toBeVisible();
 });
 
+test("the detail panel opens on Right and closes on Escape", async ({ page }) => {
+  const panel = page.getByRole("complementary", { name: "Clip detail" });
+  await expect(panel).toBeHidden();
+
+  // Selecting a row is what gives Right something to open.
+  await page.getByRole("option").first().click();
+  await page.keyboard.press("ArrowRight");
+  await expect(panel).toBeVisible();
+
+  // The row is one line; this is where the whole clip and its provenance can
+  // finally be read.
+  await expect(panel).toContainText("Device");
+  await expect(panel).toContainText("Hash");
+
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+});
+
 test("settings keeps the spine mounted and returns on Escape", async ({ page }) => {
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByText("Settings", { exact: true })).toBeVisible();

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Spine } from "../components/spine";
+import { PeekPanel } from "../components/peek-panel";
 import { SearchBox } from "../components/search-box";
 import { TypeFilterTabs } from "../components/type-filter-tabs";
 import { ClipList } from "../components/clip-list";
@@ -21,6 +22,8 @@ const ROW_HEIGHT = 56;
 
 export function HistoryWindow() {
   const [view, setView] = useState<"history" | "settings">("history");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [peeking, setPeeking] = useState(false);
   const history = useClipHistory();
   const { status } = useDaemonConnection();
   const root = useRef<HTMLDivElement | null>(null);
@@ -43,16 +46,28 @@ export function HistoryWindow() {
     if (countRef.current) countTo(countRef.current, history.clips.length);
   }, [history.clips.length]);
 
-  // Escape leaves settings. There is no back button to draw now that the spine
-  // holds the navigation, so the key has to carry it.
+  const selected = history.clips.find((c) => c.id === selectedId) ?? null;
+
+  // Right opens the detail panel, Left and Escape close it; Escape leaves
+  // settings first, since there is no back button to draw now that the spine
+  // holds the navigation.
+  //
+  // Space is deliberately untouched: the list scrolls with it, and taking that
+  // for a panel toggle trades a reflex for a shortcut.
   useEffect(() => {
-    if (view !== "settings") return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setView("history");
+      if (event.key === "ArrowRight" && view === "history" && selectedId) {
+        setPeeking(true);
+      } else if (event.key === "ArrowLeft") {
+        setPeeking(false);
+      } else if (event.key === "Escape") {
+        if (view === "settings") setView("history");
+        else setPeeking(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view]);
+  }, [view, selectedId]);
 
   async function handleCopy(clip: Clip) {
     try {
@@ -139,6 +154,11 @@ export function HistoryWindow() {
         </div>
       )}
 
+      {/* The list and the detail panel share a stage below the masthead, so
+        * the panel's narrow-window overlay covers the list and never the
+        * window controls — which are the only way to close a frameless
+        * window. */}
+      <div className={styles.stage}>
       <main className={styles.body}>
         {history.offline ? (
           <DaemonOfflineState onRetry={history.reload} />
@@ -159,7 +179,11 @@ export function HistoryWindow() {
           <ClipList
             clips={history.clips}
             itemHeight={ROW_HEIGHT}
-            onActivate={(clip) => void handleCopy(clip)}
+            selectedIndex={history.clips.findIndex((c) => c.id === selectedId)}
+            onActivate={(clip) => {
+              setSelectedId(clip.id);
+              void handleCopy(clip);
+            }}
             onTogglePin={handleTogglePin}
             onCopy={handleCopy}
             onDelete={handleDelete}
@@ -167,6 +191,11 @@ export function HistoryWindow() {
           />
         )}
       </main>
+
+        {peeking && selected && (
+          <PeekPanel clip={selected} onClose={() => setPeeking(false)} />
+        )}
+      </div>
           </>
         )}
       </div>
