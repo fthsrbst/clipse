@@ -11,8 +11,15 @@
   transition: background-color var(--duration-fast) var(--ease-out);
 }
 
+/* Pale ink, not the accent.
+ *
+ * A settings page has several switches on at once, and rendering "on" in the
+ * one saturated colour the product has put four reds on screen at the same
+ * time — at which point red stops meaning "the thing that just happened" and
+ * starts meaning nothing. Contrast carries the state instead: a filled track
+ * reads as on at a glance, monochrome. */
 .track.on {
-  background: var(--corona-gradient);
+  background: var(--color-ink-secondary);
 }
 
 .thumb {
@@ -20,9 +27,17 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--day-50);
+  background: var(--color-ink-muted);
   box-shadow: var(--shadow-raised);
-  transition: transform var(--duration-fast) var(--ease-spring);
+  transition:
+    transform var(--duration-fast) var(--ease-spring),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+/* Dark on pale once it is on, so the thumb stays visible against the filled
+ * track rather than dissolving into it. */
+.track.on .thumb {
+  background: var(--color-canvas);
 }
 
 .track.on .thumb {

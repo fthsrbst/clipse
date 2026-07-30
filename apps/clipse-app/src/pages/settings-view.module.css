@@ -43,29 +43,65 @@
  * measure stays readable while the page still reads as a column on a spread. */
 .body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 2rem 1.5rem 3rem 4.5rem;
+  padding: 2rem 2rem 0 3rem;
   display: flex;
   flex-direction: column;
   gap: 2.75rem;
-  max-width: 46rem;
+  max-width: 52rem;
   width: 100%;
 }
 
-/* No card. A section is a rule and the space under it — the same gesture the
- * rest of the product uses to mean "these belong together". */
+/* No card. A section is a numbered rule and the space under it — the same
+ * gesture the rest of the product uses to mean "these belong together". */
 .section {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--color-rule-strong);
-  padding-top: 0.35rem;
 }
 
-.row {
-  display: flex;
+/* The numeral hangs in the margin and the rule runs out to the edge, which is
+ * the onboarding's index/kicker pair brought here. */
+.sectionHead {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.75rem;
+  gap: 0.85rem;
+  padding-bottom: 0.6rem;
+}
+
+.index {
+  font-family: var(--font-mono);
+  font-size: var(--type-2xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: var(--weight-heading);
+  font-size: var(--type-md);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.sectionRule {
+  height: 1px;
+  background: var(--color-rule-strong);
+}
+
+/* Asymmetric on purpose: the explanation gets a measure it can actually be
+ * read at, and the control sits at the right edge where the eye returns to
+ * after each line. A row that stretches its label across the full width makes
+ * the reader travel twice for one setting. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 24rem) 1fr;
+  align-items: start;
+  gap: 2.5rem;
   padding: 1.1rem 0;
   border-bottom: 1px solid var(--color-rule);
 }
@@ -75,8 +111,8 @@
 }
 
 .row.stacked {
-  flex-direction: column;
-  align-items: stretch;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
 }
 
 .rowText {
@@ -101,11 +137,13 @@
 }
 
 .rowControl {
-  flex-shrink: 0;
+  justify-self: end;
+  display: flex;
+  align-items: center;
 }
 
 .row.stacked .rowControl {
-  margin-top: 10px;
+  justify-self: stretch;
   width: 100%;
 }
 
@@ -153,6 +191,10 @@
   font-size: var(--type-sm);
 }
 
+/* Sticky *and* opaque. Sticky alone let the rows scroll underneath it and show
+ * straight through the button, which read as a rendering fault rather than as
+ * a bar. The rule above it is what separates it from the content it floats
+ * over. */
 .saveBar {
   position: sticky;
   bottom: 0;
@@ -160,7 +202,10 @@
   align-items: center;
   justify-content: flex-end;
   gap: 14px;
-  padding: 12px 2px 0;
+  margin-top: auto;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--color-rule-strong);
+  background: var(--color-canvas);
 }
 
 .error {
@@ -174,12 +219,15 @@
   font-weight: 500;
 }
 
+/* The one place the accent belongs on this page: the act you are about to
+ * commit. `--color-canvas` for the label rather than the hardcoded brown left
+ * over from the amber palette, which was unreadable on red. */
 .saveButton {
   padding: 9px 18px;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--corona-gradient);
-  color: #1b1200;
+  background: var(--color-accent);
+  color: var(--color-canvas);
   font: inherit;
   font-size: var(--type-sm);
   font-weight: 600;
@@ -191,8 +239,15 @@
   transform: translateY(-1px);
 }
 
+/* Nothing to save, so nothing to warn about.
+ *
+ * The save bar is sticky, so a red button here would be on screen the whole
+ * time someone reads their settings — and a red that is always there is not
+ * the one red thing, it is decoration. It earns the accent only once there is
+ * an unsaved change to commit. */
 .saveButton:disabled {
-  opacity: 0.45;
+  background: var(--color-surface-raised);
+  color: var(--color-ink-muted);
   cursor: default;
 }
 
@@ -207,13 +262,12 @@
   flex-wrap: wrap;
 }
 
-.colophonTitle {
-  margin: 0 0 0.3rem;
-  font-family: var(--font-display);
-  font-weight: var(--weight-display);
-  font-size: var(--type-lg);
-  letter-spacing: var(--tracking-crushed);
-  color: var(--color-ink);
+/* The wordmark itself, not the name set in the display face. This is the one
+ * place in the app with room to show the logotype at a size where its
+ * letterforms are legible as letterforms. */
+.colophonMark {
+  margin-bottom: 0.55rem;
+  color: var(--color-ink-secondary);
 }
 
 .colophonLine {
@@ -223,12 +277,14 @@
   color: var(--color-ink-muted);
 }
 
+/* Quiet until you reach for it. A permanently red link on the last line of the
+ * page spends the accent on the least urgent thing in the product. */
 .colophonLink {
   font-family: var(--font-mono);
   font-size: var(--type-sm);
-  color: var(--color-accent-ink);
+  color: var(--color-ink-secondary);
   text-decoration: none;
-  border-bottom: 1px solid var(--color-accent-line);
+  border-bottom: 1px solid var(--color-rule-strong);
   padding-bottom: 2px;
   transition:
     color var(--duration-fast) var(--ease-out),

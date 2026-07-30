@@ -6,6 +6,7 @@ import { PairingPanel } from "../components/pairing-panel";
 import { CaptureModeBanner } from "../components/capture-mode-banner";
 import { DaemonOfflineState } from "../components/daemon-offline-state";
 import { WindowControls } from "../components/window-controls";
+import { AsciiLogo } from "../components/ascii-logo";
 import { EmptyState } from "../components/empty-state";
 import { useSettings } from "../hooks/use-settings";
 import type { DaemonStatus, Settings } from "../types/ipc";
@@ -72,7 +73,7 @@ export function SettingsView({ status }: SettingsViewProps) {
           />
         ) : (
           <>
-            <section className={styles.section}>
+            <Section index="01" title="Capture">
               <Row label="Hotkey" description="Opens the quick-paste popup from anywhere.">
                 <HotkeyInput value={draft.hotkey} onChange={(hotkey) => patch({ hotkey })} />
               </Row>
@@ -100,9 +101,9 @@ export function SettingsView({ status }: SettingsViewProps) {
                   label="Start at login"
                 />
               </Row>
-            </section>
+            </Section>
 
-            <section className={styles.section}>
+            <Section index="02" title="This device">
               <Row label="Device label" description="How this device appears to your other paired devices.">
                 <input
                   className={styles.textInput}
@@ -143,15 +144,15 @@ export function SettingsView({ status }: SettingsViewProps) {
                   <span className={styles.unit}>GB</span>
                 </div>
               </Row>
-            </section>
+            </Section>
 
-            <section className={styles.section}>
+            <Section index="03" title="Never captured">
               <Row label="Blocked apps" description="Clipboard activity from these apps is never captured." stacked>
                 <TagListInput values={draft.blocked_apps} onChange={(blocked_apps) => patch({ blocked_apps })} />
               </Row>
-            </section>
+            </Section>
 
-            <section className={styles.section}>
+            <Section index="04" title="Your devices">
               <Row
                 label="Paired devices"
                 description="Your clipboard is only ever shared with devices you pair here."
@@ -159,7 +160,7 @@ export function SettingsView({ status }: SettingsViewProps) {
               >
                 <PairingPanel />
               </Row>
-            </section>
+            </Section>
 
             {/* The colophon. A tool that watches everything you copy should be
              * easy to go and read the source of, so the repository is one click
@@ -167,7 +168,7 @@ export function SettingsView({ status }: SettingsViewProps) {
             <section className={styles.section}>
               <div className={styles.colophon}>
                 <div>
-                  <p className={styles.colophonTitle}>Clipse</p>
+                  <AsciiLogo variant="wordmark" cell={6.5} className={styles.colophonMark} />
                   <p className={styles.colophonLine}>
                     Free and open source, built by Fatih Serbest.
                   </p>
@@ -194,6 +195,32 @@ export function SettingsView({ status }: SettingsViewProps) {
         )}
       </div>
     </div>
+  );
+}
+
+/** A numbered band, the way the onboarding numbers its steps. The numeral sits
+ * in the margin and the rule runs out to the edge, so the heading reads as a
+ * mark on the page rather than as the lid of a box. */
+function Section({
+  index,
+  title,
+  children,
+}: {
+  index: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={styles.section}>
+      <div className={styles.sectionHead}>
+        <span className={styles.index} data-numeric>
+          {index}
+        </span>
+        <h2 className={styles.sectionTitle}>{title}</h2>
+        <span className={styles.sectionRule} aria-hidden="true" />
+      </div>
+      {children}
+    </section>
   );
 }
 
