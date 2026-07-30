@@ -3,6 +3,7 @@ mod commands;
 mod connection;
 mod daemon_host;
 mod hotkey;
+mod instance;
 #[cfg(target_os = "macos")]
 mod notch;
 mod popup;
@@ -48,6 +49,22 @@ pub fn run() {
     let embedded_for_exit = Arc::clone(&embedded);
 
     tauri::Builder::default()
+        // First in the chain, deliberately: this decides whether this process
+        // is the app at all, and everything below assumes it is.
+        //
+        // Without it a second launch could not bind the IPC endpoint, so it
+        // became a *client* of the first instance's daemon — two windows over
+        // one history, which reads as a second session.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if !instance::should_reveal(&argv) {
+                return;
+            }
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.unminimize();
+                let _ = main.show();
+                let _ = main.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         // Clipse is only useful if it is already running when you copy
         // something, so it launches at login by default. `--minimised` is read
