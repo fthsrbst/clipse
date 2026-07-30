@@ -101,6 +101,23 @@ jobs:
 
           pnpm tauri build
 
+      # The portable build is the same executable the installer would place,
+      # taken before it is wrapped: the app runs the daemon in its own process,
+      # so one file is genuinely the whole product. It writes history to the
+      # same per-user directory an installed copy uses — "portable" here means
+      # "nothing to install", not "leaves no trace".
+      #
+      # It still needs the WebView2 runtime, which ships with Windows 10 22H2
+      # and 11. The site says so next to the button.
+      - name: Stage the portable executable
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./apps/clipse-app/src-tauri/tauri.conf.json').version")
+          mkdir -p portable
+          cp target/release/clipse-app.exe "portable/Clipse_${version}_x64-portable.exe"
+
       - uses: actions/upload-artifact@v4
         with:
           name: clipse-${{ matrix.artifact }}${{ steps.signing.outputs.signed == 'true' && '' || '-unsigned' }}
@@ -110,5 +127,51 @@ jobs:
             target/release/bundle/**/*.dmg
             target/release/bundle/**/*.AppImage
             target/release/bundle/**/*.deb
+            portable/*.exe
             target/release/clipsed*
           if-no-files-found: error
+
+  # Tagging used to produce artefacts you had to go and find in the Actions tab.
+  # A tag is a release, so this makes one.
+  publish:
+    name: publish the release
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+
+      - name: Attach the installers to the tag's release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+
+          # Matched by shape, not by "every .exe": the bare `clipsed.exe` is
+          # uploaded as a build artefact for debugging and must not turn up on
+          # the release page looking like something to download.
+          mapfile -t files < <(find artefacts -type f \
+            \( -name '*.msi' \
+               -o -name '*setup.exe' \
+               -o -name '*portable.exe' \
+               -o -name '*.dmg' \
+               -o -name '*.AppImage' \
+               -o -name '*.deb' \) | sort)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no installers were produced"
+            exit 1
+          fi
+          printf 'attaching %s\n' "${files[@]}"
+
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --title "Clipse ${tag#v}" --generate-notes
+          fi
+          gh release upload "$tag" "${files[@]}" --clobber

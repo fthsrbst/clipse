@@ -17,6 +17,33 @@ posting a clipboard history to a remote host.
 The daemon is built separately and shipped alongside the app. Closing the
 window must not stop syncing, so the installer needs both binaries.
 
+## What each platform gets
+
+| Platform | Assets |
+| --- | --- |
+| Windows | `.msi`, `-setup.exe` (NSIS), `-portable.exe` |
+| macOS | `.dmg` |
+| Linux | `.AppImage`, `.deb` |
+
+**The portable executable** is the same binary the installer would place, taken
+before it is wrapped. The app runs the daemon inside its own process, so one
+file really is the whole product. Two things it is not: it still needs the
+WebView2 runtime, which ships with Windows 10 22H2 and 11 but not with older
+installs; and "portable" means "nothing to install", not "leaves no trace" —
+history goes to the same per-user directory an installed copy uses.
+
+## Tagging publishes
+
+A `v*` tag runs `bundle` on all three runners and then `publish`, which creates
+the release if it does not exist and attaches every installer to it. Before
+this existed, a tag produced artefacts you had to go and find in the Actions
+tab, and `v0.1.0`'s assets were uploaded by hand.
+
+`publish` matches assets by shape rather than by extension. The bare
+`clipsed.exe` is kept as a build artefact for debugging, and matching every
+`.exe` would have put it on the release page looking like something to
+download.
+
 ## What is *not* configured, and why
 
 **Signing.** Windows needs an Authenticode certificate; macOS needs a Developer

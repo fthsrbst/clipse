@@ -240,6 +240,49 @@ footer {
   transform: translateY(1px);
 }
 
+/* The other three platforms, ranked under the primary button rather than
+ * beside it. Every platform is built from the same tag, so the difference
+ * between them is not importance — it is which machine you happen to be on,
+ * and only one of those can be the default. */
+.downloads {
+  /* Its own row in the wrapping `.cta`: the button and its warning belong
+   * together on the line above, and these belong under both. */
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.downloads li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+}
+
+.downloads a {
+  color: var(--ink-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1px;
+  transition:
+    color 160ms var(--ease),
+    border-color 160ms var(--ease);
+}
+
+.downloads a:hover {
+  color: var(--ink);
+  border-color: var(--signal);
+}
+
+.downloads span {
+  color: var(--ink-3);
+}
+
 .note {
   max-width: 34ch;
   font-size: 0.8125rem;
