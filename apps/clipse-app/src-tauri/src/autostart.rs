@@ -45,19 +45,32 @@ pub fn apply_from_settings(app: &AppHandle, state: Arc<AppState>) {
 /// machine that refuses the registration is not a reason to interrupt someone.
 pub fn apply(app: &AppHandle, enabled: bool) {
     let manager = app.autolaunch();
-    let current = manager.is_enabled().unwrap_or(false);
-    if current == enabled {
+    let already = manager.is_enabled().unwrap_or(false);
+
+    if !enabled {
+        if already {
+            match manager.disable() {
+                Ok(()) => debug!("removed the login item"),
+                Err(e) => warn!(error = %e, "could not remove the login item"),
+            }
+        }
         return;
     }
 
-    let outcome = if enabled {
-        manager.enable()
-    } else {
-        manager.disable()
-    };
+    // Re-registered even when it is already enabled, because the registration
+    // stores an absolute path to the executable and the executable moves: from
+    // a debug build to a release build to an installed copy under
+    // %LOCALAPPDATA%. A stale entry is worse than a missing one — the login
+    // item exists, so nothing looks wrong, and Clipse simply never starts.
+    //
+    // `enable()` writes the current path, so disabling first is what makes this
+    // a refresh rather than a no-op on the platforms that skip an existing key.
+    if already && let Err(e) = manager.disable() {
+        warn!(error = %e, "could not clear the old login item before refreshing it");
+    }
 
-    match outcome {
-        Ok(()) => debug!(enabled, "updated the login item"),
-        Err(e) => warn!(error = %e, enabled, "could not update the login item"),
+    match manager.enable() {
+        Ok(()) => debug!(refreshed = already, "registered the login item"),
+        Err(e) => warn!(error = %e, "could not register the login item"),
     }
 }

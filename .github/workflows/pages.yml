@@ -1,0 +1,41 @@
+# Publishes site/ to GitHub Pages.
+#
+# Deployed from a workflow rather than by pointing Pages at a folder, because
+# `docs/` in this repository is documentation and would otherwise be served as
+# the site — and because Jekyll would try to process the Markdown in it. This
+# uploads exactly `site/`, nothing else, and no Jekyll runs.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A queued deploy replaces a waiting one but never cancels a running one:
+# interrupting a deployment mid-flight can leave the site half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

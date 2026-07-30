@@ -1,0 +1,409 @@
+/* Clipse — the page.
+ *
+ * Same system as the application: a near-black room with a green cast, exactly
+ * one saturated colour in it, heavy crushed display type over mono. The eclipse
+ * is live and computed, and the page is short on purpose — three claims and a
+ * download. Anything more would be a brochure for a tool you can read the
+ * source of in ten minutes.
+ */
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("fonts/bricolage-grotesque-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 200 800;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("fonts/dm-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("fonts/dm-mono-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  --void: #000f08;
+  --void-deep: #000806;
+  --signal: #fb3640;
+  --signal-dim: rgba(251, 54, 64, 0.34);
+  --ink: #f4f8f6;
+  --ink-2: #c2d0c9;
+  --ink-3: #63796e;
+  --rule: #0f2a1f;
+
+  --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --mono: "DM Mono", ui-monospace, "SF Mono", monospace;
+
+  --gutter: clamp(1.25rem, 5vw, 5rem);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: clamp(0.875rem, 0.3vw + 0.8rem, 1rem);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a {
+  color: var(--signal);
+  text-decoration: none;
+  border-bottom: 1px solid var(--signal-dim);
+  transition: border-color 160ms var(--ease);
+}
+
+a:hover {
+  border-color: var(--signal);
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 3px;
+}
+
+/* --- the live eclipse ---------------------------------------------------- */
+
+.field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+#eclipse {
+  margin: 0;
+  font-family: var(--mono);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  white-space: pre;
+  color: var(--signal);
+  text-shadow:
+    0 0 14px rgba(251, 54, 64, 0.4),
+    0 0 48px rgba(251, 54, 64, 0.16);
+  transform: translateZ(0);
+}
+
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(75% 60% at 62% 42%, transparent 8%, rgba(0, 8, 6, 0.86) 100%),
+    linear-gradient(to bottom, rgba(0, 8, 6, 0.7), transparent 22%, rgba(0, 8, 6, 0.72));
+}
+
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* --- chrome -------------------------------------------------------------- */
+
+.masthead,
+main,
+footer {
+  position: relative;
+  z-index: 3;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem var(--gutter);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1.375rem;
+  letter-spacing: -0.045em;
+}
+
+.mark {
+  width: 0.8em;
+  height: 0.8em;
+  color: var(--signal);
+  transform: translateY(0.04em);
+}
+
+.ghost {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-2);
+  border: 0;
+}
+
+.ghost:hover {
+  color: var(--signal);
+}
+
+/* --- hero ---------------------------------------------------------------- */
+
+.hero {
+  padding: clamp(4rem, 14vh, 10rem) var(--gutter) clamp(6rem, 18vh, 12rem);
+  max-width: 62rem;
+}
+
+.kicker {
+  margin: 0 0 1.75rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--signal);
+}
+
+/* The one big thing on the page. Leading under 1 so three lines read as one
+ * object, tracking pulled hard in because Bricolage opens up at scale. */
+.title {
+  margin: 0 0 2rem;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(2.75rem, 9vw, 7rem);
+  line-height: 0.9;
+  letter-spacing: -0.05em;
+}
+
+.title em {
+  font-style: normal;
+  color: var(--signal);
+}
+
+.lede {
+  margin: 0 0 2.5rem;
+  max-width: 46ch;
+  color: var(--ink-2);
+  line-height: 1.75;
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.9rem 1.75rem;
+  border: 1px solid var(--signal);
+  background: var(--signal);
+  color: var(--void-deep);
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  transition:
+    background 160ms var(--ease),
+    transform 90ms var(--ease);
+}
+
+.button:hover {
+  background: #fd5a62;
+  border-color: #fd5a62;
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.note {
+  max-width: 34ch;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* --- claims -------------------------------------------------------------- */
+
+.claims {
+  padding: 0 var(--gutter) clamp(5rem, 14vh, 9rem);
+  display: grid;
+  gap: clamp(3rem, 8vh, 6rem);
+}
+
+/* Stepped indents rather than a row of equal columns: the page walks down and
+ * to the right, and nothing here is a card. */
+.claim {
+  max-width: 44ch;
+  padding-left: 2.25rem;
+  border-left: 1px solid var(--rule);
+  position: relative;
+}
+
+/* A scrim drawn from the block itself, so it travels with the stepped indents
+ * instead of being positioned separately. The artwork is live and moving; body
+ * copy cannot be asked to compete with a field of punctuation. */
+.claim::after {
+  content: "";
+  position: absolute;
+  inset: -1.5rem -2rem -1.5rem -1rem;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    76% 68% at 40% 50%,
+    rgba(0, 8, 6, 0.93),
+    rgba(0, 8, 6, 0.7) 58%,
+    transparent 100%
+  );
+}
+
+.claim[data-indent="1"] {
+  margin-left: clamp(0rem, 12vw, 9rem);
+}
+
+.claim[data-indent="2"] {
+  margin-left: clamp(0rem, 24vw, 18rem);
+}
+
+.claim .index {
+  position: absolute;
+  left: -0.5rem;
+  top: 0.1rem;
+  padding: 0 0.5rem;
+  background: var(--void);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--signal);
+}
+
+.claim h2 {
+  margin: 1.9rem 0 0.9rem;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(1.5rem, 3.6vw, 2.25rem);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.claim p {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+/* --- specs --------------------------------------------------------------- */
+
+.specs {
+  padding: 0 var(--gutter) clamp(4rem, 10vh, 7rem);
+}
+
+.specs dl {
+  margin: 0;
+  border-top: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.specs dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.specs dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+}
+
+.specs dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink);
+  text-align: right;
+}
+
+/* Only the inner edges get a gutter, so the rules meet cleanly at the sides. */
+@media (min-width: 45rem) {
+  .specs dl > div:nth-child(odd) {
+    padding-right: 2rem;
+  }
+  .specs dl > div:nth-child(even) {
+    padding-left: 2rem;
+  }
+}
+
+/* --- footer -------------------------------------------------------------- */
+
+footer {
+  padding: 2rem var(--gutter) 3.5rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+
+footer p {
+  margin: 0;
+}
+
+/* --- reveal --------------------------------------------------------------
+ * One orchestrated arrival per element as it enters, driven by the observer in
+ * eclipse.js. Elements start hidden only when JS is there to un-hide them —
+ * `.js` is set on the document before paint, so a page with scripts blocked
+ * still reads everything. */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(1.25rem);
+}
+
+.js [data-reveal].in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 700ms var(--ease),
+    transform 700ms var(--ease);
+}
+
+.js .hero [data-reveal]:nth-child(1).in { transition-delay: 40ms; }
+.js .hero [data-reveal]:nth-child(2).in { transition-delay: 120ms; }
+.js .hero [data-reveal]:nth-child(3).in { transition-delay: 220ms; }
+.js .hero [data-reveal]:nth-child(4).in { transition-delay: 320ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .js [data-reveal],
+  .js [data-reveal].in {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

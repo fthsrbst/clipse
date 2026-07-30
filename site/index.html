@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clipse — your clipboard, on every machine you own</title>
+    <meta
+      name="description"
+      content="Clipse remembers everything you copy and syncs it between your own machines. No server, no account. Passwords are never written down."
+    />
+    <meta name="theme-color" content="#000F08" />
+
+    <meta property="og:title" content="Clipse" />
+    <meta property="og:description" content="Your clipboard, on every machine you own. No server, no account." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://fthsrbst.github.io/clipse/" />
+
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <!-- The eclipse is computed, not a picture: the same renderer the app uses,
+         with its phase driven by how far down the page you are. Scrolling
+         occults the sun. -->
+    <div class="field" aria-hidden="true"><pre id="eclipse"></pre></div>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="masthead">
+      <span class="wordmark">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <mask id="m">
+            <rect width="32" height="32" fill="#000" />
+            <circle cx="16" cy="16" r="13" fill="#fff" />
+            <circle cx="23.2" cy="16" r="11.2" fill="#000" />
+          </mask>
+          <rect width="32" height="32" fill="currentColor" mask="url(#m)" />
+        </svg>
+        Clipse
+      </span>
+      <a class="ghost" href="https://github.com/fthsrbst/clipse">Source ↗</a>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="kicker" data-reveal>Clipboard sync, without a middleman</p>
+        <h1 class="title" data-reveal>
+          Your clipboard,<br />
+          on every machine<br />
+          <em>you own.</em>
+        </h1>
+        <p class="lede" data-reveal>
+          Everything you copy — text, links, images, files — kept for as long as you want it and
+          synced straight between your own computers. No server. No account. One executable.
+        </p>
+        <div class="cta" data-reveal>
+          <a class="button" href="https://github.com/fthsrbst/clipse/releases/latest">
+            Download for Windows
+          </a>
+          <span class="note">
+            Unsigned — SmartScreen will warn you, and it is right to.
+            <a href="https://github.com/fthsrbst/clipse#building">Build it yourself</a> instead.
+          </span>
+        </div>
+      </section>
+
+      <!-- Three claims, deliberately not three equal cards: each sits at a
+           different indent so the eye steps down the page. -->
+      <section class="claims">
+        <article class="claim" data-reveal data-indent="0">
+          <span class="index">01</span>
+          <h2>It forgets nothing.</h2>
+          <p>
+            No cap, no eviction, no "last 20 items". The history is a file on your machine, indexed
+            for full-text search, and it stays until you delete it.
+          </p>
+        </article>
+
+        <article class="claim" data-reveal data-indent="1">
+          <span class="index">02</span>
+          <h2>Except what it must.</h2>
+          <p>
+            Copy a password out of your password manager and Clipse does not store it. Not hidden,
+            not encrypted — never written. Same for API keys, card numbers and private keys. It is
+            enforced in the capture path, before the history exists.
+          </p>
+        </article>
+
+        <article class="claim" data-reveal data-indent="2">
+          <span class="index">03</span>
+          <h2>Your devices. Nobody else's.</h2>
+          <p>
+            Pairing takes a one-time six-digit code you confirm on both screens. Devices that never
+            exchanged one cannot see your clipboard, cannot ask for it, and cannot join by being on
+            the same network.
+          </p>
+        </article>
+      </section>
+
+      <section class="specs" data-reveal>
+        <dl>
+          <div><dt>Platforms</dt><dd>Windows, macOS, Linux</dd></div>
+          <div><dt>Transport</dt><dd>QUIC over your LAN or tailnet</dd></div>
+          <div><dt>Handshake</dt><dd>Noise_IK, six-digit SAS</dd></div>
+          <div><dt>Store</dt><dd>SQLite + FTS5, optional SQLCipher</dd></div>
+          <div><dt>Built with</dt><dd>Rust, Tauri</dd></div>
+          <div><dt>Licence</dt><dd>MIT</dd></div>
+        </dl>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Built by <a href="https://github.com/fthsrbst">Fatih Serbest</a>. Free and open source —
+        <a href="https://github.com/fthsrbst/clipse">read the whole thing</a>.
+      </p>
+    </footer>
+
+    <script src="eclipse.js"></script>
+  </body>
+</html>
