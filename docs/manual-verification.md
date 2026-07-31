@@ -88,6 +88,44 @@ supply it yourself. And `xsel --clipboard --input` needs no `--keep`: it forks
 into the background on its own to retain CLIPBOARD ownership, whereas `--keep`
 only covers PRIMARY and SECONDARY.
 
+**2026-07-31, macOS 26.5.2 (arm64) — the first *installed* copy, from a dmg.**
+Everything before this ran from `cargo`/`pnpm tauri dev`; this was the shipped
+artefact, dragged into `/Applications` from the disk image window, with the
+download flag set on the dmg by hand so Gatekeeper would treat it as downloaded.
+
+What it found, in order of how badly it mattered:
+
+1. **The published app could not be opened at all.** Not a warning — "Clipse is
+   damaged and can't be opened. You should move it to the Trash." The cause was
+   in the release workflow, not in the app: with no Developer ID, Tauri signed
+   nothing, so the bundle had no seal and `codesign --verify` rejected it.
+   `v0.2.1` and `v0.2.2` both shipped this way. Fixed by signing ad-hoc; see
+   `docs/packaging.md`.
+2. **The dmg published for `v0.2.2` had no `.DS_Store`,** so none of the
+   installer artwork was ever displayed — the background image was on the
+   volume, unused, and the window opened as a default Finder window. CI-built
+   dmgs had never been styled. Also fixed in the workflow.
+3. Once built locally with the styling applied, items 7 and 8 hold: the window
+   is 660×420, the eclipse is there, and both icons sit inside their clearings.
+   Item 9 — the drag reads without an arrow. No chevrons needed.
+4. **The window is 28 points too short**: Finder's bounds include the title bar,
+   so a 420-tall window shows 392 points of a 420-tall drawing. `windowSize` is
+   now 448. Verified by resizing the live window to 448 and watching the bottom
+   of the field arrive.
+5. **Finder draws the icon labels in near-black on the near-black artwork**, so
+   "Clipse" and "Applications" are effectively invisible until an icon is
+   selected. Not fixed — it is a design decision, and the room being black is
+   the design. Recorded here so the next person does not rediscover it as a bug.
+
+The app itself, installed: onboarding runs through its four cards, the main
+window opens, the daemon inside it connects with no "isn't running" state, and
+the spine reads `1 CLIP`. Copying an AWS key and a Luhn-valid card number left
+the history at one item, and `strings` over `clipse.db`, `-wal` and `-shm` found
+neither of them — the privacy promise, checked at the bytes, on an installed
+copy. The refused counter stayed at `0` while doing it, which was a real bug:
+the daemon counted the refusals but never pushed a status update, so the one
+number that has to be believable was stale. Fixed in `crates/clipsed/src/capture.rs`.
+
 ## F1 — one device
 
 Start a daemon against a scratch directory so nothing here touches a real
@@ -246,7 +284,8 @@ cd apps/clipse-app && pnpm tauri build --bundles nsis,msi
 6. Advance a page in the MSI. The banner's page title does not collide with the
    wordmark at the right edge.
 
-**macOS — none of this has been done.**
+**macOS — done on 2026-07-31, on a real Mac. Read the log below first: items
+7–9 were looked at, and two of them found something.**
 
 7. Open the `.dmg`. The window is 660×420 and shows the eclipse.
 8. The Clipse icon and the Applications folder each sit *inside* a clearing in

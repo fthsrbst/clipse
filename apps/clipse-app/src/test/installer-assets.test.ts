@@ -142,4 +142,19 @@ describe("DMG geometry", () => {
     expect(dmg.applicationFolderPosition.x).toBeLessThan(dmg.windowSize.width - 64);
     expect(dmg.appPosition.y).toBeLessThan(dmg.windowSize.height - 64);
   });
+
+  /** Finder's window bounds include the title bar; the background picture and
+   * the icon positions live in the content area below it. A window asked for
+   * at exactly the artwork's height therefore hides the bottom 28 points of
+   * the drawing — which is what shipped, and what was seen on a real Mac. */
+  it("leaves room for the title bar above the artwork", () => {
+    const TITLE_BAR = 28;
+    const dmg = at(["bundle", "macOS", "dmg"]) as {
+      windowSize: { width: number; height: number };
+    };
+    const art = REQUIRED.find((a) => a.what === "DMG background")!;
+
+    expect(dmg.windowSize.width).toBe(art.width);
+    expect(dmg.windowSize.height).toBe(art.height + TITLE_BAR);
+  });
 });

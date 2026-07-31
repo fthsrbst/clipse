@@ -206,8 +206,14 @@ function wixBanner(): Canvas {
  * 244px across. The icon positions are chosen to clear it, not the reverse.
  *
  * The geometry here has to agree with `appPosition` and
- * `applicationFolderPosition` in `tauri.conf.json`. It has never been seen on a
- * Mac — see `docs/manual-verification.md`.
+ * `applicationFolderPosition` in `tauri.conf.json`.
+ *
+ * `windowSize` there is 448, not 420, and the difference is not a mistake:
+ * Finder's window bounds include the 28pt title bar, while the background
+ * picture and the icon positions are placed in the content area below it. Ask
+ * for a 420-tall window and the bottom 28 rows of this drawing are behind the
+ * screen edge of the window. Measured on a real Mac — the window came back as
+ * 660×420 with 392 points of content.
  */
 const DMG = {
   width: 660,

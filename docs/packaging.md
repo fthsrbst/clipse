@@ -71,7 +71,7 @@ download.
 **Signing.** Windows needs an Authenticode certificate; macOS needs a Developer
 ID plus an app-specific password for notarisation. Both belong to the project
 owner and cannot be checked in. The workflow reads them from secrets and skips
-signing when they are absent:
+signing when they are absent — on macOS with one correction described below:
 
 | Secret | Used for |
 | --- | --- |
@@ -79,6 +79,50 @@ signing when they are absent:
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | codesign |
 | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | notarytool |
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | update signing |
+
+### macOS without a Developer ID
+
+"Skips signing" was too literal, and it produced a broken product. With no
+identity Tauri left the `.app` carrying only the ad-hoc signature the linker
+puts on the executable, and no seal over the bundle: `codesign --verify` failed
+with *"code has no resources but signature indicates they must be present"*,
+and Gatekeeper turned that into **"Clipse is damaged and can't be opened. You
+should move it to the Trash."** — the one refusal that gives a user nothing to
+try. Every macOS asset up to and including `v0.2.2` had this. Confirmed by
+inspecting the published dmg, not by reasoning about it.
+
+The workflow now sets `APPLE_SIGNING_IDENTITY=-` when no real identity is
+present, so the bundle is signed ad-hoc and verifies. What that does and does
+not buy:
+
+- `codesign --verify --deep --strict` passes, and the bundle keeps its
+  identifier (`dev.clipse.app`) and hardened runtime.
+- It is still **not notarised**, so `spctl` still rejects it and a downloaded
+  copy is stopped once, with the "Apple could not verify…" dialog that does
+  offer *Open Anyway*. The README tells users about that and about
+  `xattr -dr com.apple.quarantine`.
+- Only a real Developer ID plus notarisation makes the first launch silent.
+  The secrets above are already wired for it; nothing else has to change.
+
+### The dmg's window was never actually configured
+
+Tauri passes create-dmg `--skip-jenkins` whenever `CI` is set, and that flag
+skips the AppleScript that writes the volume's `.DS_Store`. The window size,
+the icon positions and the background all live in that file. So the released
+dmgs shipped `.background/dmg-background.png` and no instruction to display it:
+they opened as a bare Finder window. Setting `TAURI_BUNDLER_DMG_IGNORE_CI=true`
+asks for the styling; the workflow falls back to an unstyled dmg rather than
+failing a release if Finder cannot be driven on the runner.
+
+Two things follow for anyone building this by hand:
+
+- **Unmount any volume already called `Clipse` first.** create-dmg mounts the
+  staging volume by name, and an existing one makes the AppleScript fail with
+  `-1728` and the whole build fail with the useless `error running
+  bundle_dmg.sh`.
+- **`windowSize.height` is the artwork plus the title bar.** Finder's bounds
+  include the 28pt title bar; the background is drawn in the content area under
+  it. See `scripts/render-installer-art.mts`.
 
 **The auto-updater is switched off.** Its config exists but `active` is `false`
 and `pubkey` is empty, deliberately. The updater verifies a signature over

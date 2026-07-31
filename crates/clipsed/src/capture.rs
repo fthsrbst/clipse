@@ -26,6 +26,11 @@ pub async fn run(daemon: Arc<Daemon>, mut events: Receiver<CaptureEvent>) {
                 debug!(reason = %label, "capture suppressed");
                 daemon.note_suppression();
                 daemon.emit(Event::Suppressed { reason: label });
+                // The count lives in `DaemonStatus`, and the UI only rereads
+                // that on `StatusChanged`. Without this the spine keeps saying
+                // nothing was refused while it is refusing — the one number
+                // that has to be believable is the one about secrets.
+                daemon.emit_status();
             }
             CaptureEvent::Captured(capture) => {
                 if daemon.is_paused() {

@@ -99,7 +99,38 @@ jobs:
           export_if_set APPLE_PASSWORD '${{ secrets.APPLE_PASSWORD }}'
           export_if_set APPLE_TEAM_ID '${{ secrets.APPLE_TEAM_ID }}'
 
-          pnpm tauri build
+          # Without a Developer ID, Tauri signs nothing at all on macOS — and
+          # "nothing" is worse than it sounds. The executable keeps the ad-hoc
+          # signature the linker put there, the bundle around it gets no seal,
+          # and `codesign --verify` fails with "code has no resources but
+          # signature indicates they must be present". Gatekeeper renders that
+          # as *"Clipse is damaged and can't be opened"*, which is the one
+          # message that offers the user no way forward at all.
+          #
+          # Signing ad-hoc (identity `-`) produces a bundle that verifies. It
+          # is still unnotarised, so a downloaded copy still has to be let
+          # through once — but that path exists, and "damaged" has none.
+          if [ "$RUNNER_OS" = "macOS" ] && [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            export APPLE_SIGNING_IDENTITY=-
+            echo "::warning::No Developer ID; signing the macOS bundle ad-hoc (unnotarised)."
+          fi
+
+          # Tauri hands create-dmg `--skip-jenkins` whenever CI is set, and that
+          # flag skips the AppleScript that writes the volume's `.DS_Store`.
+          # Everything the installer window looks like — the background, the
+          # icon positions, the window size — lives in that file, so every dmg
+          # this workflow has published so far opened as a plain Finder window
+          # carrying an unused background image. The runner does have a Finder
+          # session; ask for the styling, and fall back to an unstyled dmg
+          # rather than failing a release if the Finder script cannot run.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if ! TAURI_BUNDLER_DMG_IGNORE_CI=true pnpm tauri build; then
+              echo "::warning::Finder styling failed; re-bundling the dmg without it."
+              pnpm tauri build
+            fi
+          else
+            pnpm tauri build
+          fi
 
       # The portable build is the same executable the installer would place,
       # taken before it is wrapped: the app runs the daemon in its own process,

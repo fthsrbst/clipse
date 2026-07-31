@@ -30,6 +30,22 @@ what is next.
 The daemon is separate from the UI on purpose: closing the window must not stop
 syncing.
 
+## Installing
+
+Downloads are on the [releases page](https://github.com/fthsrbst/clipse/releases).
+
+**macOS.** The builds are signed ad-hoc, not with an Apple Developer ID, so a
+copy you downloaded is not notarised and macOS will not open it on the first
+double-click. Open it once with **right-click → Open**, or clear the download
+flag yourself:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Clipse.app
+```
+
+After that it launches normally, and updates do not ask again. The dmg is
+Apple-silicon only for now.
+
 ## Privacy
 
 Non-negotiable, and enforced in code rather than in settings:
