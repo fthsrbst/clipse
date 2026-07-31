@@ -744,7 +744,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "clipse-app"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-clipboard"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clipse-core",
  "objc2",
@@ -788,7 +788,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-core"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "blake3",
  "directories",
@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-crypto"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "base64 0.22.1",
  "blake3",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-ipc"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clipse-core",
  "rmp-serde",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-net"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clipse-core",
  "clipse-crypto",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-store"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "blake3",
  "clipse-core",
@@ -868,7 +868,7 @@ dependencies = [
 
 [[package]]
 name = "clipse-sync"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "clipse-core",
  "rmp-serde",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "clipsed"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
