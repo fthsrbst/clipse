@@ -196,3 +196,44 @@ Install from the built artefact on a clean machine per platform. The installer
 is signed (no SmartScreen warning on Windows, no Gatekeeper block on macOS),
 the app launches, the daemon registers to start at login, and the updater
 finds and applies a newer release.
+
+## Installer artwork
+
+`src/test/installer-assets.test.ts` proves the five images exist, are the exact
+sizes NSIS and WiX demand, and are still referenced from `tauri.conf.json`. It
+cannot prove any of them is *displayed*, which is a different claim and the one
+that matters. Each item below has to be looked at.
+
+**Windows.**
+
+```bash
+cd apps/clipse-app && pnpm tauri build --bundles nsis,msi
+```
+
+1. Run the NSIS `-setup.exe`. The Welcome page shows the eclipse sidebar down
+   its left edge, not NSIS's grey-blue default.
+2. Advance past Welcome. The header strip carries the dark `CLIPSE` plate at
+   its right.
+3. Finish the install. The Finish page shows the same sidebar as Welcome.
+4. Run the uninstaller from Add/Remove Programs. Its header is the same plate —
+   an uninstaller that looks like a different program is its own small alarm.
+5. Run the `.msi`. The Welcome dialog's left band is the eclipse and **the
+   heading and body text are readable** — that is the whole reason the right of
+   that bitmap is light.
+6. Advance a page in the MSI. The banner's page title does not collide with the
+   wordmark at the right edge.
+
+**macOS — none of this has been done.**
+
+7. Open the `.dmg`. The window is 660×420 and shows the eclipse.
+8. The Clipse icon and the Applications folder each sit *inside* a clearing in
+   the corona rather than on top of the characters. If they do not, the
+   positions in `tauri.conf.json` and the `DMG` constants in
+   `scripts/render-installer-art.mts` have drifted apart; they are two halves of
+   one drawing.
+9. Judge whether the drag reads without an arrow. If it does not, the fallback
+   is chevrons built from ramp characters along the same line — decided at the
+   machine, not before it.
+10. The background will be soft on a Retina display. Tauri accepts only
+    `png`/`jpg`/`gif` here, not a multi-representation `.tiff`, so there is no
+    `@2x` layer to supply. Confirm it is *soft*, not *wrong*.

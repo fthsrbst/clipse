@@ -17,6 +17,28 @@ posting a clipboard history to a remote host.
 The daemon is built separately and shipped alongside the app. Closing the
 window must not stop syncing, so the installer needs both binaries.
 
+## The installer artwork
+
+`assets/installer/` holds five generated images, wired into the bundle config:
+the NSIS sidebar and header, the WiX banner and dialog, and the DMG background.
+They are drawn by `pnpm art` in `apps/clipse-app` from the same eclipse
+renderer the running application uses, and committed — a release does not need
+a rasteriser, and a change to the artwork shows up in a diff.
+
+Two constraints in there are not stylistic and should not be "fixed" by
+somebody making the installer look more consistent:
+
+- **The MSI images have a light zone.** MSI paints its heading and body text
+  onto `wix-dialog.bmp` and its page title onto `wix-banner.bmp`, in a fixed
+  dark colour. Make them uniformly dark and the installer becomes unreadable.
+- **The DMG background's clearings encode `appPosition` and
+  `applicationFolderPosition`.** The holes in the corona are where Finder puts
+  the icons. The two have to move together.
+
+`assets/installer/README.md` has the rest, and
+`docs/manual-verification.md` has the list of things that have to be looked at
+rather than asserted.
+
 ## What each platform gets
 
 | Platform | Assets |

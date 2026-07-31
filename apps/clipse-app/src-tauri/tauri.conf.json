@@ -66,14 +66,34 @@
     "licenseFile": "../../../LICENSE",
     "windows": {
       "wix": {
-        "language": "en-US"
+        "language": "en-US",
+        "bannerPath": "../../../assets/installer/windows/wix-banner.bmp",
+        "dialogImagePath": "../../../assets/installer/windows/wix-dialog.bmp"
       },
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "headerImage": "../../../assets/installer/windows/nsis-header.bmp",
+        "sidebarImage": "../../../assets/installer/windows/nsis-sidebar.bmp",
+        "uninstallerHeaderImage": "../../../assets/installer/windows/nsis-header.bmp"
       }
     },
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "dmg": {
+        "background": "../../../assets/installer/macos/dmg-background.png",
+        "windowSize": {
+          "width": 660,
+          "height": 420
+        },
+        "appPosition": {
+          "x": 104,
+          "y": 210
+        },
+        "applicationFolderPosition": {
+          "x": 556,
+          "y": 210
+        }
+      }
     },
     "linux": {
       "deb": {

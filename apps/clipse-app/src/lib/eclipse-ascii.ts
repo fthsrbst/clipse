@@ -16,8 +16,12 @@
 const CELL_ASPECT = 0.5;
 
 /** Dim to bright. Space is not in the ramp: the background is drawn from the
- * corona field, and an empty cell has to stay genuinely empty. */
-const RAMP = ".,-~:;=!*#$@";
+ * corona field, and an empty cell has to stay genuinely empty.
+ *
+ * Exported because the installer artwork has to colour each character by how
+ * bright it is, which means knowing where in this ramp it sits. A second copy
+ * of the string would drift from this one silently. */
+export const RAMP = ".,-~:;=!*#$@";
 
 /** Sun and moon are nearly the same size in the sky, which is the whole reason
  * a total eclipse looks the way it does — and why the corona is visible at all.
