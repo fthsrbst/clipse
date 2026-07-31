@@ -333,6 +333,27 @@ mod clipboard {
             "the suppression reason leaked the secret: {suppressed}"
         );
 
+        // A refusal has to *push* the new count, not just hold it. The window
+        // rereads `DaemonStatus` on `StatusChanged` and nowhere else, so a
+        // suppression that emits only `Suppressed` leaves the spine reading
+        // "0 refused" while it is refusing — which is exactly what an
+        // installed copy did on macOS before this.
+        //
+        // It waits for a status *carrying the count* rather than for the next
+        // one to arrive: peers and capture mode push status too, and a race
+        // with one of those would fail this for the wrong reason.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Event::StatusChanged(status) = events.next().await.unwrap()
+                    && status.secrets_refused == 1
+                {
+                    return;
+                }
+            }
+        })
+        .await
+        .expect("the suppression pushed no status update carrying the new count");
+
         // The count is the only record a refusal leaves, and it is what the
         // window shows. Asserted here rather than in a unit test because the
         // thing worth proving is that a *real* suppression reaches it — and
