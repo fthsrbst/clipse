@@ -144,8 +144,9 @@ function nsisSidebar(): Canvas {
   return darkPanel(164, 314);
 }
 
-/** NSIS header, top right of every other page. Also used by the uninstaller —
- * an uninstaller that looks like a different program is its own small alarm. */
+/** NSIS header: the top-left plate on every page after Welcome, with the page
+ * title set beside it. Also used by the uninstaller — an uninstaller that looks
+ * like a different program is its own small alarm. */
 function nsisHeader(): Canvas {
   return darkStrip(150, 57);
 }

@@ -25,6 +25,27 @@ isn't running". Pass an absolute path to both.
 
 ## Log
 
+**2026-07-31, Windows 11 — the installer artwork, seen.** `0.2.1` built with
+`--bundles nsis,msi` and both wizards driven far enough to look at every image
+they carry. Nothing was installed; both were cancelled, and the MSI's own exit
+page confirmed "your system has not been modified".
+
+Verified: the NSIS Welcome sidebar (the eclipse, not NSIS's grey-blue default);
+the NSIS header plate on the License page; the MSI Welcome dialog with its
+heading and body text fully legible over the light zone; the MSI banner on the
+License page with the page title clear of the wordmark; and the MSI exit dialog,
+which reuses the same dialog bitmap.
+
+One thing written down wrong and now corrected: the NSIS header image lands at
+the **left** of the header strip, not the right. MUI2 only moves it right when
+`MUI_HEADERIMAGE_RIGHT` is defined, and Tauri's template does not define it.
+The plate works either way, but the claim was wrong.
+
+Still unseen: the NSIS Finish page (it is bound to the same
+`MUI_WELCOMEFINISHPAGE_BITMAP` as Welcome, so it is the same image — but that
+is an argument, not an observation) and the uninstaller header, both of which
+need a completed install. Everything on macOS.
+
 **2026-07-27, Windows 11.** Daemon run against a scratch directory; five items
 copied from another process; `clipse-ctl` queried afterwards. Three stored.
 An AWS access key and a Luhn-valid card number were both suppressed; `order
@@ -213,7 +234,9 @@ cd apps/clipse-app && pnpm tauri build --bundles nsis,msi
 1. Run the NSIS `-setup.exe`. The Welcome page shows the eclipse sidebar down
    its left edge, not NSIS's grey-blue default.
 2. Advance past Welcome. The header strip carries the dark `CLIPSE` plate at
-   its right.
+   its **left**, with the page title set beside it — MUI2 puts the header image
+   on the left unless `MUI_HEADERIMAGE_RIGHT` is defined, and Tauri's template
+   does not define it.
 3. Finish the install. The Finish page shows the same sidebar as Welcome.
 4. Run the uninstaller from Add/Remove Programs. Its header is the same plate —
    an uninstaller that looks like a different program is its own small alarm.

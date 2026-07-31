@@ -54,7 +54,7 @@ Dimensions and formats below are from the bundled Tauri config schema
 | Asset | Size | Where it appears | Background constraint |
 | --- | --- | --- | --- |
 | `nsis-sidebar.bmp` | 164×314 | NSIS Welcome and Finish pages, full left panel | May be fully dark — page text sits beside it, not on it |
-| `nsis-header.bmp` | 150×57 | Header of every other NSIS page, top right | A dark plate on the installer's white header strip |
+| `nsis-header.bmp` | 150×57 | Header of every other NSIS page | A dark plate on the installer's white header strip |
 | `wix-banner.bmp` | 493×58 | MSI top strip on all but the first page | **Left side must be light** — MSI draws black text there |
 | `wix-dialog.bmp` | 493×312 | Entire background of the MSI Welcome and Exit dialogs | **Right ~330px must be light** — black title and body text are drawn over it |
 | `dmg-background.png` | 660×420 | The Finder window the DMG opens | Free |
