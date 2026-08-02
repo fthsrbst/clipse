@@ -361,6 +361,73 @@ footer {
   color: var(--ink-2);
 }
 
+/* --- shots --------------------------------------------------------------- */
+
+/* The artwork behind the page is live and moving, so a screenshot dropped
+ * straight onto it reads as a hole. A hairline and a seated shadow give the
+ * window an edge to end at, which is the same job the app's own frame does. */
+.shots {
+  padding: 0 var(--gutter) clamp(4rem, 12vh, 8rem);
+  display: grid;
+  gap: clamp(3.5rem, 9vh, 6.5rem);
+  justify-items: start;
+}
+
+.shot {
+  margin: 0;
+  max-width: 62rem;
+  width: 100%;
+}
+
+/* The popup is a small surface. Shown at the same width as the history window
+ * it would read as the same object at a different zoom, which is the one thing
+ * the pair of images has to avoid saying. */
+.shot--narrow {
+  max-width: 31rem;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 2rem 4rem rgba(0, 0, 0, 0.55);
+}
+
+.shot figcaption {
+  position: relative;
+  margin-top: 1.25rem;
+  padding-left: 2.25rem;
+  max-width: 44ch;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.shot .index {
+  position: absolute;
+  left: 0;
+  top: 0.1rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--signal);
+}
+
+/* Stepped to match the claims above, so the two sections read as one walk down
+ * the page rather than a list and then a gallery. */
+@media (min-width: 60rem) {
+  .shots .shot:nth-child(2) {
+    margin-left: 4rem;
+  }
+  .shots .shot:nth-child(3) {
+    margin-left: 8rem;
+  }
+}
+
 /* --- specs --------------------------------------------------------------- */
 
 .specs {
