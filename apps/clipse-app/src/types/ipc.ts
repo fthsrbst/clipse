@@ -136,17 +136,15 @@ export function isCommandError(value: unknown): value is CommandError {
   return kind === "not_connected" || kind === "daemon" || kind === "transport";
 }
 
-/** The string a pairing screen shows, and when it stops being valid. */
-export interface PairingOffer {
-  uri: string;
+/** The six digits this device is showing, and when they stop working. */
+export interface PairingCode {
+  code: string;
   expires_at_ms: number;
-  /** The offer as a self-contained SVG. Null when it could not be encoded, in
-   * which case the copyable string is the whole story. */
-  svg: string | null;
 }
 
-/** Both devices compute these. The user compares them. */
-export interface PairingCode {
-  digits: string;
+/** The end of a ceremony. There is nothing left for the user to check — the
+ * two devices proved to each other that they know the code and that neither
+ * one's key was swapped — so this only names what was added. */
+export interface Paired {
   peer_label: string;
 }

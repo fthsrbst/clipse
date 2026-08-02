@@ -1,0 +1,78 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 var(--space-3, 12px);
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.row svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-ink-muted);
+  flex: none;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.label {
+  color: var(--color-ink);
+  font-size: var(--type-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reachability, not identity: deliberately quieter than the device name, so
+   the list reads as "these are your devices" first and "here is the state of
+   each" second. */
+.where {
+  color: var(--color-ink-muted);
+  font-size: var(--type-xs);
+}
+
+.forget {
+  flex: none;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-ink-secondary);
+  font: inherit;
+  font-size: var(--type-xs);
+  cursor: pointer;
+}
+
+.forget:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.forget:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty {
+  margin: 0 0 var(--space-3, 12px);
+  color: var(--color-ink-muted);
+  font-size: var(--type-sm);
+  line-height: var(--leading-normal);
+}

@@ -352,10 +352,8 @@ async fn a_blob_travels_on_its_own_stream_while_control_messages_keep_flowing() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
-    use clipse_crypto::{
-        CandidateAddress, PairingAccept, PairingConfirm, PairingInitiator, PairingResponder,
-    };
+async fn two_strangers_pair_over_the_wire_with_six_typed_digits_and_can_then_sync() {
+    use clipse_crypto::{CandidateAddress, PairingInitiator, PairingResponder, PairingWire};
     use clipse_net::Inbound;
 
     // Neither device has heard of the other. This is first contact.
@@ -365,7 +363,8 @@ async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
     let bob_transport = Arc::new(bob.transport());
     let alice_addr = alice_transport.local_addr();
 
-    // Alice shows a QR code.
+    // Alice shows six digits. Bob's user reads them off her screen; nothing
+    // about them travels over the network except the lookup tag.
     let initiator = PairingInitiator::create(
         &alice.identity,
         "alice".into(),
@@ -373,27 +372,68 @@ async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
         vec![CandidateAddress::Lan(alice_addr)],
         0,
     );
-    let uri = initiator.to_uri();
+    let code = *initiator.code();
 
-    // Alice waits for whoever scans it.
+    // Alice answers whoever proves they know the code.
     let alice_side = tokio::spawn({
         let alice_transport = Arc::clone(&alice_transport);
         async move {
             let inbound = alice_transport.accept().await.unwrap().unwrap();
-            let Inbound::Pairing(exchange) = inbound else {
+            let Inbound::Pairing(mut exchange) = inbound else {
                 panic!("a pairing attempt must not arrive as a session");
             };
 
-            let accept = PairingAccept::from_bytes(exchange.accept_bytes()).unwrap();
-            let (confirm, sas, paired_bob) = initiator.accept(&accept, 0).unwrap();
-            exchange.confirm(&confirm.to_bytes()).await.unwrap();
-            (sas, paired_bob)
+            let PairingWire::Lookup { tag } = PairingWire::from_bytes(exchange.first()).unwrap()
+            else {
+                panic!("the ceremony opens with a lookup");
+            };
+            assert!(initiator.answers(&tag), "the typed code must reach us");
+            exchange
+                .reply(&PairingWire::Offer(Box::new(initiator.offer().clone())).to_bytes())
+                .await
+                .unwrap();
+
+            let PairingWire::Accept(accept) =
+                PairingWire::from_bytes(&exchange.next().await.unwrap()).unwrap()
+            else {
+                panic!("expected an accept");
+            };
+            let (confirm, awaiting) = initiator.accept(&accept, 0).unwrap();
+            exchange
+                .reply(&PairingWire::Confirm(Box::new(confirm)).to_bytes())
+                .await
+                .unwrap();
+
+            let PairingWire::Finish(finish) =
+                PairingWire::from_bytes(&exchange.next().await.unwrap()).unwrap()
+            else {
+                panic!("expected a proof");
+            };
+            // Nothing has been trusted until this line.
+            let paired_bob = awaiting.verify(&finish).unwrap();
+            exchange.reply(&PairingWire::Done.to_bytes()).await.unwrap();
+            exchange.finish().await;
+            paired_bob
         }
     });
 
-    // Bob scans it and answers over the address the QR carried.
+    // Bob types the digits. He has no address for Alice beyond what discovery
+    // found, so the ceremony starts by asking whether this is the right device.
+    let mut call = bob_transport
+        .pairing_call(alice_addr)
+        .await
+        .expect("a pairing connection");
+    let reply = call
+        .call(&PairingWire::Lookup { tag: code.tag() }.to_bytes())
+        .await
+        .unwrap();
+    let PairingWire::Offer(offer) = PairingWire::from_bytes(&reply).unwrap() else {
+        panic!("the device showing the code must answer with its offer");
+    };
+
     let (responder, accept) = PairingResponder::from_offer(
-        &uri,
+        *offer,
+        code,
         &bob.identity,
         "bob".into(),
         Platform::Linux,
@@ -402,24 +442,33 @@ async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
     )
     .unwrap();
 
-    let confirm_bytes = bob_transport
-        .send_pairing_accept(alice_addr, &accept.to_bytes())
+    let reply = call
+        .call(&PairingWire::Accept(Box::new(accept)).to_bytes())
         .await
-        .expect("pairing exchange should complete");
+        .unwrap();
+    let PairingWire::Confirm(confirm) = PairingWire::from_bytes(&reply).unwrap() else {
+        panic!("expected a confirm");
+    };
+    let (finish, paired_alice) = responder
+        .verify(&confirm, 0)
+        .expect("Alice's proof must verify");
+    let reply = call
+        .call(&PairingWire::Finish(Box::new(finish)).to_bytes())
+        .await
+        .unwrap();
+    assert!(matches!(
+        PairingWire::from_bytes(&reply).unwrap(),
+        PairingWire::Done
+    ));
+    call.close();
 
-    let confirm = PairingConfirm::from_bytes(&confirm_bytes).unwrap();
-    let (sas_bob, paired_alice) = responder.verify(&confirm, 0).unwrap();
-    let (sas_alice, paired_bob) = alice_side.await.unwrap();
-
-    // The user compares these two screens. They must match, or pairing is off.
-    assert_eq!(
-        sas_alice, sas_bob,
-        "the six digits must agree or the user would refuse"
-    );
+    let paired_bob = alice_side.await.unwrap();
     assert_eq!(paired_bob.device_id, bob.id());
     assert_eq!(paired_alice.device_id, alice.id());
+    assert_eq!(paired_bob.static_public, bob.identity.public_key());
+    assert_eq!(paired_alice.static_public, alice.identity.public_key());
 
-    // The user confirms on both devices, which is what commits the trust.
+    // Both sides commit what the ceremony proved.
     alice.trust.write().unwrap().add_peer(paired_bob);
     bob.trust.write().unwrap().add_peer(paired_alice);
 
@@ -445,6 +494,64 @@ async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
 
     link.close("done");
     let _ = server.await;
+}
+
+/// A device that is not the one showing the code says so and stops there —
+/// which is what lets the typing device walk a whole network quickly.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_that_is_not_showing_the_code_refuses_the_lookup() {
+    use clipse_crypto::{CandidateAddress, PairingCode, PairingInitiator, PairingWire};
+    use clipse_net::Inbound;
+
+    let alice = Device::new();
+    let bob = Device::new();
+    let alice_transport = Arc::new(alice.transport());
+    let bob_transport = Arc::new(bob.transport());
+    let alice_addr = alice_transport.local_addr();
+
+    let initiator = PairingInitiator::create(
+        &alice.identity,
+        "alice".into(),
+        Platform::MacOs,
+        vec![CandidateAddress::Lan(alice_addr)],
+        0,
+    );
+
+    let alice_side = tokio::spawn({
+        let alice_transport = Arc::clone(&alice_transport);
+        async move {
+            let Inbound::Pairing(mut exchange) = alice_transport.accept().await.unwrap().unwrap()
+            else {
+                panic!("expected a pairing attempt");
+            };
+            let PairingWire::Lookup { tag } = PairingWire::from_bytes(exchange.first()).unwrap()
+            else {
+                panic!("expected a lookup");
+            };
+            assert!(!initiator.answers(&tag), "this is the wrong code");
+            exchange
+                .reply(&PairingWire::Refused.to_bytes())
+                .await
+                .unwrap();
+            exchange.finish().await;
+        }
+    });
+
+    let wrong = PairingCode::parse("000 000").unwrap();
+    let mut call = bob_transport.pairing_call(alice_addr).await.unwrap();
+    let reply = call
+        .call(&PairingWire::Lookup { tag: wrong.tag() }.to_bytes())
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            PairingWire::from_bytes(&reply).unwrap(),
+            PairingWire::Refused
+        ),
+        "a device with a different code must not hand over an offer"
+    );
+    call.close();
+    alice_side.await.unwrap();
 }
 
 /// The bug that made every inbound session between two real machines look

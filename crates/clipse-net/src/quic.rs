@@ -44,7 +44,13 @@ const ALPN: &[u8] = b"clipse/1";
 /// session and be mistaken for one. A separate ALPN makes the accept loop
 /// branch on what the connection is *for* before it reads a byte, rather than
 /// inferring it from the first message.
-const PAIRING_ALPN: &[u8] = b"clipse-pair/1";
+///
+/// `/2` because the ceremony went from one round trip (accept → confirm) to
+/// three (lookup → offer, accept → confirm, finish → done). A device on the
+/// old build now fails to negotiate an ALPN, which is a clear error, instead
+/// of connecting and waiting forever for a message shape that no longer
+/// exists.
+const PAIRING_ALPN: &[u8] = b"clipse-pair/2";
 
 /// What arrived on the listening endpoint.
 pub enum Inbound {
@@ -52,53 +58,98 @@ pub enum Inbound {
     /// session is an order of magnitude bigger than a pairing exchange, and
     /// every accept would otherwise pay for the larger one.
     Session(Box<PeerLink>),
-    /// Someone who scanned our QR code. Unauthenticated by definition; the
-    /// six-digit code the user compares is what makes it safe.
+    /// Someone who typed our six digits — or is guessing at them.
+    /// Unauthenticated by definition; the code, and the MACs derived from it,
+    /// are what make the ceremony safe.
     Pairing(PairingExchange),
 }
 
-/// The responder's side of one pairing ceremony, mid-flight.
+/// The offering side of one pairing ceremony, mid-flight.
+///
+/// A request/response channel and nothing more: this type carries opaque
+/// frames and has no idea what a pairing message is. Which frame means what,
+/// and what has to verify before anything is trusted, is `clipsed`'s business.
 pub struct PairingExchange {
     send: SendStream,
-    /// Held only so the stream stays open until `confirm` has flushed;
-    /// nothing further is read from it.
-    _recv: RecvStream,
+    recv: RecvStream,
     connection: Connection,
-    accept_bytes: Vec<u8>,
+    first: Vec<u8>,
 }
 
 impl PairingExchange {
-    /// The `PairingAccept` the far side sent. Feed it to
-    /// `PairingInitiator::accept`.
-    pub fn accept_bytes(&self) -> &[u8] {
-        &self.accept_bytes
+    /// The first frame the far side sent, read as part of accepting so the
+    /// caller can decide whether this ceremony is for it at all.
+    pub fn first(&self) -> &[u8] {
+        &self.first
     }
 
     pub fn remote_addr(&self) -> SocketAddr {
         self.connection.remote_address()
     }
 
-    /// Send the `PairingConfirm` back and finish.
-    pub async fn confirm(mut self, confirm_bytes: &[u8]) -> Result<(), LinkError> {
-        write_frame(&mut self.send, confirm_bytes).await?;
-        // Give QUIC a moment to flush before the connection drops; a pairing
-        // ceremony that loses its last message leaves the two devices
-        // disagreeing about whether they are paired.
+    /// Answer the frame in hand.
+    pub async fn reply(&mut self, bytes: &[u8]) -> Result<(), LinkError> {
+        write_frame(&mut self.send, bytes).await
+    }
+
+    /// Read the far side's next frame.
+    pub async fn next(&mut self) -> Result<Vec<u8>, LinkError> {
+        read_frame(&mut self.recv).await
+    }
+
+    /// Flush and hang up. A pairing ceremony that loses its last message
+    /// leaves the two devices disagreeing about whether they are paired, so
+    /// the connection is not closed until QUIC says the peer has it.
+    pub async fn finish(mut self) {
         let _ = self.send.finish();
-        self.connection.closed().await;
-        Ok(())
+        let _ = tokio::time::timeout(CLOSE_GRACE, self.connection.closed()).await;
     }
 
     /// Refuse, without saying why. A stranger probing for a pairing window
-    /// learns nothing from the difference between "expired" and "rejected".
+    /// learns nothing from the difference between "expired", "wrong code" and
+    /// "no window open".
     pub fn reject(self) {
         self.connection.close(0u32.into(), b"pairing refused");
+    }
+}
+
+/// The typing side of one pairing ceremony: an open connection over which
+/// request frames are sent and reply frames awaited, in order.
+pub struct PairingCall {
+    send: SendStream,
+    recv: RecvStream,
+    connection: Connection,
+}
+
+impl PairingCall {
+    /// One request, one reply.
+    pub async fn call(&mut self, bytes: &[u8]) -> Result<Vec<u8>, LinkError> {
+        write_frame(&mut self.send, bytes).await?;
+        read_frame(&mut self.recv).await
+    }
+
+    /// Send a last frame that expects no answer, then hang up.
+    pub async fn finish(mut self, bytes: &[u8]) -> Result<(), LinkError> {
+        write_frame(&mut self.send, bytes).await?;
+        let _ = self.send.finish();
+        let _ = tokio::time::timeout(CLOSE_GRACE, self.connection.closed()).await;
+        Ok(())
+    }
+
+    pub fn close(self) {
+        self.connection.close(0u32.into(), b"done");
     }
 }
 
 /// How long to wait for one candidate address before moving to the next.
 /// Short: the whole point of the ordered list is to fail over quickly.
 const DIAL_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// How long a pairing probe waits on one address. Much shorter than a session
+/// dial: pairing walks every device it can see on the network looking for the
+/// one holding the typed code, with a user watching, so a silent address must
+/// be abandoned in well under a second.
+const PAIRING_DIAL_TIMEOUT: Duration = Duration::from_millis(700);
 
 /// How long the side that speaks last waits for the other to hang up before
 /// closing anyway. Generous enough for a LAN round trip and a slow store
@@ -310,12 +361,12 @@ impl QuicTransport {
                 .accept_bi()
                 .await
                 .map_err(|e| LinkError::Transport(e.to_string()))?;
-            let accept_bytes = read_frame(&mut recv).await?;
+            let first = read_frame(&mut recv).await?;
             return Ok(Inbound::Pairing(PairingExchange {
                 send,
-                _recv: recv,
+                recv,
                 connection,
-                accept_bytes,
+                first,
             }));
         }
 
@@ -350,20 +401,18 @@ impl QuicTransport {
         })))
     }
 
-    /// Run the initiator-facing half of a pairing ceremony: send our
-    /// `PairingAccept` to the address from the QR code and wait for the
-    /// `PairingConfirm`.
+    /// Open the typing side of a pairing ceremony against one address.
     ///
     /// Unauthenticated on purpose — this is the exchange that establishes
-    /// authentication. What makes it safe is the six digits the user compares
-    /// afterwards, not anything on this connection.
-    pub async fn send_pairing_accept(
-        &self,
-        addr: SocketAddr,
-        accept_bytes: &[u8],
-    ) -> Result<Vec<u8>, LinkError> {
+    /// authentication. What makes it safe is the six digits the user typed and
+    /// the MACs derived from them, not anything about this connection.
+    ///
+    /// `PAIRING_DIAL_TIMEOUT` rather than the session one: this is called once
+    /// per device on the network while a user watches a spinner, so a machine
+    /// that is not answering has to be given up on quickly.
+    pub async fn pairing_call(&self, addr: SocketAddr) -> Result<PairingCall, LinkError> {
         let connection = tokio::time::timeout(
-            DIAL_TIMEOUT,
+            PAIRING_DIAL_TIMEOUT,
             self.endpoint
                 .connect_with(self.pairing_client.clone(), addr, "clipse")
                 .map_err(|e| LinkError::Transport(e.to_string()))?,
@@ -372,15 +421,16 @@ impl QuicTransport {
         .map_err(|_| LinkError::Transport("pairing dial timed out".into()))?
         .map_err(|e| LinkError::Transport(e.to_string()))?;
 
-        let (mut send, mut recv) = connection
+        let (send, recv) = connection
             .open_bi()
             .await
             .map_err(|e| LinkError::Transport(e.to_string()))?;
 
-        write_frame(&mut send, accept_bytes).await?;
-        let confirm = read_frame(&mut recv).await?;
-        connection.close(0u32.into(), b"paired");
-        Ok(confirm)
+        Ok(PairingCall {
+            send,
+            recv,
+            connection,
+        })
     }
 
     /// Stop accepting and let in-flight connections drain.

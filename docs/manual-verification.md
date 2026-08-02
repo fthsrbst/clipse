@@ -176,10 +176,15 @@ cargo run -p clipsed -- --data-dir ./.clipse-dev/a
 cargo run -p clipsed -- --data-dir ./.clipse-dev/b
 ```
 
-1. **Pairing.** The QR and six digits appear on A; entering them on B pairs.
-   Both list each other. **Deliberately mistype the digits — pairing fails.**
-2. **Sync.** Copy on A, paste on B within a second or two, and the source
-   badge names A. Then the reverse.
+1. **Pairing.** Six digits appear on A; typing them on B pairs the two, with
+   no further step on either screen. Both then list each other, with A shown as
+   reachable. **Deliberately mistype a digit — pairing fails and nothing is
+   paired.** Type the code on a third machine that is on the network but was
+   never shown it: also fails.
+2. **Sync.** Copy on A. It appears on B **immediately** — a second at the
+   outside, not "eventually" — and the source badge names A. Then the reverse.
+   If it takes tens of seconds, the capture path has stopped nudging the peer
+   loop and it is running on the 30-second floor.
 3. **No loop.** Watch the logs while syncing: the clip crosses once. It must
    not ping-pong.
 4. **Large content.** Copy a 20 MB image on A. It arrives on B, the transfer

@@ -2,6 +2,59 @@
 
 Short entries: what was decided, and why. Newest first.
 
+## 2026-08: Pairing is six typed digits, and the devices verify each other
+
+**Decision.** A device shows a six-digit code; the user types it on the other
+one. That is the whole ceremony. The `clipse://pair/…` URI, the QR code and the
+"do these two codes match?" confirmation are gone. The code is a *secret*: it
+selects the device (via `BLAKE3(label ‖ digits)` as a lookup tag) and it is
+hashed into the transcript both sides use to build two confirmation MACs, along
+with both device ids and both static public keys.
+
+**Why.** The old flow asked a user to move a 300-character string between two
+machines by hand and then compare two numbers. The comparison was the security
+boundary, and it is exactly the kind of step people click past — a defence that
+depends on someone bothering to look is weaker in practice than it is on paper.
+Folding the code into the transcript moves the check into the machines: a
+man-in-the-middle who substitutes a static key makes the two transcripts differ,
+the MACs do not verify, and both devices refuse on their own.
+
+**Consequence.** Three things follow, and the third is a real trade.
+
+1. Finding the peer is now the daemon's job: mDNS on a LAN, the tailnet peer
+   list otherwise. That is why the QUIC endpoint now prefers a fixed port
+   (`clipse_net::DEFAULT_SYNC_PORT`) instead of an ephemeral one — a tailnet has
+   no multicast to ask, so the port has to be predictable.
+2. Online guessing is bounded: an offer that is probed with the wrong tag
+   `MAX_LOOKUP_ATTEMPTS` times cancels itself, so an attacker on the network
+   gets a handful of tries out of 10^6 per code the user displays.
+3. **Offline guessing is not.** An attacker already sitting in the path between
+   two of the user's own machines, during the three minutes a code is on screen,
+   can complete a ceremony with the typing device, brute-force six digits
+   offline against the MAC it received, and use the code against the other
+   device. Only a PAKE (SPAKE2 and friends) closes that with a secret this
+   short, and there is no audited one in this tree. The old design caught this
+   case — *if* the user actually compared the digits. This is a deliberate
+   swap of a defence that depended on human attention for one that depends on
+   an attacker's position, and it is the upgrade path if pairing over hostile
+   networks ever becomes a real use case.
+
+## 2026-08: Sync is nudged by the capture path, not polled on a timer
+
+**Decision.** `PeerManager` has a `Notify` the daemon raises whenever the
+history changes — a capture, a deletion, a pin. The 30-second dial tick stays as
+a floor, not as the mechanism.
+
+**Why.** The tick *was* the mechanism, so "copy here, paste there" took up to
+half a minute. Every part of the session — QUIC, Noise, the summary exchange —
+was already fast; the product still felt broken, because a clipboard that
+arrives whenever is not a clipboard anyone builds a habit around.
+
+**Consequence.** A pass is serialised behind a mutex so a burst of copies queues
+one follow-up rather than starting several overlapping sessions against the same
+device, and the loop syncs once at startup instead of waiting out the first
+tick.
+
 ## 2026-07: A frameless main window, with our own controls on every platform
 
 **Decision.** `decorations: false` on the `main` window, on all three

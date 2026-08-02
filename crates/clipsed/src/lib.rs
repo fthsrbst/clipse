@@ -155,18 +155,13 @@ pub async fn run(
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    // Peer sync. Bound on any interface so a peer on the LAN can reach us;
-    // port 0 because the port is advertised, not fixed.
+    // Peer sync. Bound on any interface so a peer on the LAN can reach us, and
+    // on a fixed port when one is free — see `clipse_net::DEFAULT_SYNC_PORT`
+    // for why an ephemeral port made devices unreachable after a restart.
     let peer_loops = if sync_enabled {
         let device_key = Arc::new(device_key);
         let trust = Arc::new(std::sync::RwLock::new(device_trust));
-        match clipse_net::QuicTransport::bind(
-            "0.0.0.0:0"
-                .parse()
-                .expect("a literal address always parses"),
-            Arc::clone(&device_key),
-            Arc::clone(&trust),
-        ) {
+        match bind_transport(Arc::clone(&device_key), Arc::clone(&trust)) {
             Ok(transport) => {
                 let transport = Arc::new(transport);
                 info!(addr = %transport.local_addr(), "quic listening");
@@ -262,7 +257,35 @@ pub async fn run(
     Ok(Started::Daemon)
 }
 
-/// Addresses a peer could dial us on, for the QR code.
+/// Bind the QUIC endpoint, preferring the well-known port.
+///
+/// A second daemon on the same machine (a dev instance beside the installed
+/// app) must still start, so a taken port is not an error — it falls back to
+/// whatever the OS hands out, exactly as before. What changes is the ordinary
+/// case: one Clipse per machine, on a port its peers can predict.
+fn bind_transport(
+    identity: Arc<clipse_crypto::DeviceIdentity>,
+    trust: Arc<std::sync::RwLock<clipse_crypto::Trust>>,
+) -> Result<clipse_net::QuicTransport, clipse_net::QuicError> {
+    let preferred: std::net::SocketAddr = (
+        std::net::Ipv4Addr::UNSPECIFIED,
+        clipse_net::DEFAULT_SYNC_PORT,
+    )
+        .into();
+    match clipse_net::QuicTransport::bind(preferred, Arc::clone(&identity), Arc::clone(&trust)) {
+        Ok(transport) => Ok(transport),
+        Err(e) => {
+            info!(error = %e, port = clipse_net::DEFAULT_SYNC_PORT, "the usual port is taken; using an ephemeral one");
+            clipse_net::QuicTransport::bind(
+                (std::net::Ipv4Addr::UNSPECIFIED, 0).into(),
+                identity,
+                trust,
+            )
+        }
+    }
+}
+
+/// Addresses a peer could dial us on, for the pairing offer.
 ///
 /// The QUIC endpoint binds `0.0.0.0`, which is not something anyone can dial,
 /// so the primary interface address is found by opening a UDP socket toward a

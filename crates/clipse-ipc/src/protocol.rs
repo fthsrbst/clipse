@@ -113,18 +113,15 @@ pub enum Request {
     GetSettings,
     UpdateSettings(Box<Settings>),
 
-    /// Show a QR code: this device becomes the initiator and starts accepting
-    /// one pairing attempt. Expires on its own — see `PAIRING_OFFER_TTL_SECS`.
+    /// Show six digits: this device starts answering the one peer that knows
+    /// them. Expires on its own — see `PAIRING_OFFER_TTL_SECS`.
     BeginPairing,
-    /// Scan a QR code: this device answers the offer in it.
-    PairWithUri {
-        uri: String,
-    },
-    /// Commit or discard the pairing whose six digits the user just compared.
-    /// The comparison is the security boundary, so nothing is trusted until
-    /// this arrives.
-    ConfirmPairing {
-        accept: bool,
+    /// The user typed the six digits from the other screen. This device finds
+    /// whoever is showing them and completes the ceremony; there is no second
+    /// step, because the two devices verify each other rather than asking the
+    /// user to compare anything.
+    PairWithCode {
+        code: String,
     },
     /// Stop offering to pair.
     CancelPairing,
@@ -155,14 +152,13 @@ pub enum Response {
     Status(Box<DaemonStatus>),
     Devices(Vec<PeerInfo>),
     Settings(Box<Settings>),
-    /// The string to render as a QR code, and when it stops being valid.
-    PairingOffer {
-        uri: String,
+    /// The six digits to put on screen, and when they stop working.
+    PairingCode {
+        code: String,
         expires_at_ms: u64,
     },
-    /// Both devices show this. The user compares them; they must match.
-    PairingCode {
-        digits: String,
+    /// The ceremony completed and the device is now trusted.
+    Paired {
         peer_label: String,
     },
     Ok,
@@ -182,10 +178,10 @@ pub enum Event {
     Suppressed {
         reason: String,
     },
-    /// Someone answered our QR code. Show these digits next to theirs; the
-    /// user comparing them is what makes the pairing safe.
-    PairingCode {
-        digits: String,
+    /// Someone typed the digits this device is showing, and both sides proved
+    /// they meant it. Sent to the *offering* device, which has no other way to
+    /// know the ceremony finished.
+    PairingSucceeded {
         peer_label: String,
     },
     /// The ceremony ended without a pairing — expired, refused, or failed.

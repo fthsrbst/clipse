@@ -2,89 +2,80 @@ import { describe, expect, it } from "vitest";
 
 import {
   type PairingState,
-  canConfirm,
+  canConnect,
+  digitsOnly,
   isBusy,
   pairingReducer,
 } from "./pairing-machine";
 
-const offer = { uri: "clipse://pair/abc", expires_at_ms: 1_000, svg: null };
-const code = { digits: "123 456", peer_label: "laptop" };
+const code = { code: "482 913", expires_at_ms: 1_000 };
+const paired = { peer_label: "laptop" };
 
 function run(from: PairingState, ...actions: Parameters<typeof pairingReducer>[1][]) {
   return actions.reduce(pairingReducer, from);
 }
 
 describe("pairing machine", () => {
-  it("walks the offering side from idle to a comparison", () => {
-    const state = run({ step: "idle" }, { type: "begin" }, { type: "offered", offer }, {
-      type: "code",
-      code,
-      role: "offered",
-    });
-    expect(state).toEqual({ step: "comparing", code, role: "offered" });
-    expect(canConfirm(state)).toBe(true);
+  it("walks the showing side from idle to paired", () => {
+    const showing = run({ step: "idle" }, { type: "begin" }, { type: "showing", code });
+    expect(showing).toEqual({ step: "showing", code });
+
+    // The device showing the digits is told by an event, not by a click.
+    const done = pairingReducer(showing, { type: "paired", paired });
+    expect(done).toEqual({ step: "paired", peerLabel: "laptop" });
   });
 
-  it("walks the answering side to the same place", () => {
-    const state = run({ step: "idle" }, { type: "answer" }, {
-      type: "code",
-      code,
-      role: "answered",
-    });
-    expect(state.step).toBe("comparing");
+  it("walks the typing side to the same place, with nothing in between", () => {
+    const state = run({ step: "idle" }, { type: "connect" }, { type: "paired", paired });
+    expect(state).toEqual({ step: "paired", peerLabel: "laptop" });
   });
 
-  // The whole reason this is a reducer.
-  it("refuses to confirm from any state where no code is on screen", () => {
-    const withoutCode: PairingState[] = [
-      { step: "idle" },
-      { step: "starting" },
-      { step: "offering", offer },
-      { step: "answering" },
-      { step: "confirming" },
-      { step: "paired", peerLabel: "laptop" },
-      { step: "failed", reason: "nope" },
-    ];
-
-    for (const state of withoutCode) {
-      expect(canConfirm(state)).toBe(false);
-      expect(pairingReducer(state, { type: "confirm" })).toEqual(state);
-    }
+  it("will not start a second ceremony while one is running", () => {
+    expect(isBusy({ step: "idle" })).toBe(false);
+    expect(isBusy({ step: "paired", peerLabel: "x" })).toBe(false);
+    expect(isBusy({ step: "failed", reason: "x" })).toBe(false);
+    expect(isBusy({ step: "showing", code })).toBe(true);
+    expect(isBusy({ step: "connecting" })).toBe(true);
   });
 
-  it("only reaches paired by way of confirming", () => {
-    expect(pairingReducer({ step: "comparing", code, role: "offered" }, { type: "confirmed" }))
-      .toEqual({ step: "comparing", code, role: "offered" });
+  it("only offers to connect once six digits are actually typed", () => {
+    expect(canConnect("48", { step: "idle" })).toBe(false);
+    expect(canConnect("48291", { step: "idle" })).toBe(false);
+    expect(canConnect("482 913", { step: "idle" })).toBe(true);
+    expect(canConnect("482-913", { step: "idle" })).toBe(true);
+    expect(canConnect("482913", { step: "connecting" })).toBe(
+      false,
+      // Asking the daemon twice is refused there anyway; not asking is better
+      // than showing the user an error they did not cause.
+    );
+  });
 
-    const proper = run({ step: "comparing", code, role: "offered" }, { type: "confirm" }, {
-      type: "confirmed",
-    });
-    expect(proper.step).toBe("paired");
+  it("reads a code the way it is shown, and refuses anything else", () => {
+    expect(digitsOnly("482 913")).toBe("482913");
+    expect(digitsOnly("482-913")).toBe("482913");
+    expect(digitsOnly("  4 8 2 9 1 3  ")).toBe("482913");
+    expect(digitsOnly("48291399")).toBe("482913");
+    expect(digitsOnly("abc")).toBe("");
   });
 
   it("cancelling from anywhere returns to idle", () => {
     for (const state of [
-      { step: "offering", offer } as PairingState,
-      { step: "comparing", code, role: "offered" } as PairingState,
+      { step: "showing", code } as PairingState,
+      { step: "connecting" } as PairingState,
       { step: "failed", reason: "x" } as PairingState,
     ]) {
       expect(pairingReducer(state, { type: "cancel" })).toEqual({ step: "idle" });
     }
   });
 
-  it("knows when the daemon is already busy with a ceremony", () => {
-    expect(isBusy({ step: "idle" })).toBe(false);
-    expect(isBusy({ step: "paired", peerLabel: "x" })).toBe(false);
-    expect(isBusy({ step: "failed", reason: "x" })).toBe(false);
-    expect(isBusy({ step: "offering", offer })).toBe(true);
-    expect(isBusy({ step: "comparing", code, role: "offered" })).toBe(true);
-  });
-
   it("a failure is reported with its reason rather than swallowed", () => {
-    const state = pairingReducer({ step: "answering" }, {
-      type: "fail",
-      reason: "that code has expired",
+    const state = pairingReducer(
+      { step: "connecting" },
+      { type: "fail", reason: "no device on this network is showing that code" },
+    );
+    expect(state).toEqual({
+      step: "failed",
+      reason: "no device on this network is showing that code",
     });
-    expect(state).toEqual({ step: "failed", reason: "that code has expired" });
   });
 });

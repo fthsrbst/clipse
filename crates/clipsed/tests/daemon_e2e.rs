@@ -425,17 +425,33 @@ mod clipboard {
 fn ipc_version_is_the_one_the_daemon_was_built_against() {
     // Guards against a client and daemon drifting apart silently. Changing
     // this number is the point at which you confirm the wire really did change
-    // shape -- 2 added `DaemonStatus::secrets_refused`.
-    assert_eq!(IPC_VERSION, 2);
+    // shape -- 3 replaced the pasted URI with a typed six-digit code.
+    assert_eq!(IPC_VERSION, 3);
 }
 
-/// Two real daemon processes, paired the way the UI will do it.
+/// Only one pairing test at a time.
 ///
-/// This is the whole ceremony over the real IPC surface and the real network:
-/// one shows a code, the other scans it, both compute six digits, and neither
-/// trusts anything until both are told the digits matched.
+/// Each of these starts real daemons that announce themselves and then walk
+/// *every* Clipse on this machine looking for the one showing a code — so two
+/// running at once means each one's wrong-code probes land on the other's
+/// offer, and an offer that is probed with enough wrong codes retires itself
+/// (which is the point of that rule). Serialising them keeps the tests honest
+/// about the behaviour instead of weakening it to make them pass.
+static ONE_PAIRING_AT_A_TIME: std::sync::LazyLock<tokio::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
+
+/// Two real daemon processes, paired the way the UI does it.
+///
+/// The whole ceremony over the real IPC surface and the real network: one
+/// device shows six digits, the other is told those six digits and finds it,
+/// and both prove to each other that they mean it. There is no third step —
+/// the user types once and is done.
+///
+/// Finding the other device is part of what is under test: nothing here tells
+/// Bob where Alice is.
 #[tokio::test(flavor = "multi_thread")]
-async fn two_daemons_pair_through_the_ipc_surface() {
+async fn two_daemons_pair_from_six_typed_digits() {
+    let _one_at_a_time = ONE_PAIRING_AT_A_TIME.lock().await;
     let dir_a = TempDir::new().unwrap();
     let dir_b = TempDir::new().unwrap();
     let (_daemon_a, endpoint_a) = start_daemon(&dir_a).await;
@@ -444,78 +460,83 @@ async fn two_daemons_pair_through_the_ipc_surface() {
     let mut alice = connect(&endpoint_a).await;
     let mut bob = connect(&endpoint_b).await;
 
-    // Alice's second connection watches for the code her daemon computes when
-    // someone answers — the UI does exactly this.
+    // Alice's second connection watches for the news that someone paired —
+    // the offering device has no other way to know the ceremony finished.
     let mut alice_events = connect(&endpoint_a).await.subscribe().await.unwrap();
 
-    let uri = match alice.call(Request::BeginPairing).await.unwrap() {
-        Response::PairingOffer { uri, expires_at_ms } => {
-            assert!(uri.starts_with("clipse://pair/"), "not a QR payload: {uri}");
-            assert!(expires_at_ms > 0, "an offer must expire");
-            uri
+    let code = match alice.call(Request::BeginPairing).await.unwrap() {
+        Response::PairingCode {
+            code,
+            expires_at_ms,
+        } => {
+            assert_eq!(
+                code.chars().filter(char::is_ascii_digit).count(),
+                6,
+                "the screen must show six digits, not {code}"
+            );
+            assert!(expires_at_ms > 0, "a code must expire");
+            code
         }
         other => panic!("BeginPairing: {other:?}"),
     };
 
-    // Bob scans it. His daemon answers Alice's over the network and comes back
-    // with the digits to show.
-    let bob_digits = match bob.call(Request::PairWithUri { uri }).await.unwrap() {
-        Response::PairingCode { digits, peer_label } => {
-            assert!(!peer_label.is_empty(), "the other device should be named");
-            digits
+    // Nothing is trusted yet, on either side.
+    for client in [&mut alice, &mut bob] {
+        match client.call(Request::Status).await.unwrap() {
+            Response::Status(status) => assert_eq!(
+                status.peers_total, 0,
+                "a device was trusted before anyone typed anything"
+            ),
+            other => panic!("Status: {other:?}"),
         }
-        other => panic!("PairWithUri: {other:?}"),
-    };
+    }
 
-    let alice_digits = tokio::time::timeout(Duration::from_secs(10), async {
+    match bob
+        .call(Request::PairWithCode { code })
+        .await
+        .expect("typing the code must pair")
+    {
+        Response::Paired { peer_label } => {
+            assert!(!peer_label.is_empty(), "the other device should be named")
+        }
+        other => panic!("PairWithCode: {other:?}"),
+    }
+
+    let told = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            if let Event::PairingCode { digits, .. } = alice_events.next().await.unwrap() {
-                return digits;
+            if let Event::PairingSucceeded { peer_label } = alice_events.next().await.unwrap() {
+                return peer_label;
             }
         }
     })
     .await
-    .expect("alice never got a pairing code");
-
-    // The user is looking at two screens. If these differed, they would refuse.
-    assert_eq!(
-        alice_digits, bob_digits,
-        "the two devices computed different codes"
-    );
-
-    // Before confirmation, neither device trusts the other.
-    for client in [&mut alice, &mut bob] {
-        match client.call(Request::Status).await.unwrap() {
-            Response::Status(status) => assert_eq!(
-                status.peers_total, 0,
-                "a device was trusted before anyone confirmed"
-            ),
-            other => panic!("Status: {other:?}"),
-        }
-    }
-
-    for client in [&mut alice, &mut bob] {
-        assert!(matches!(
-            client
-                .call(Request::ConfirmPairing { accept: true })
-                .await
-                .unwrap(),
-            Response::Ok
-        ));
-    }
+    .expect("the offering device was never told it had paired");
+    assert!(!told.is_empty());
 
     for client in [&mut alice, &mut bob] {
         match client.call(Request::Status).await.unwrap() {
             Response::Status(status) => {
-                assert_eq!(status.peers_total, 1, "confirmation did not pair them")
+                assert_eq!(status.peers_total, 1, "the ceremony did not pair them")
             }
             other => panic!("Status: {other:?}"),
         }
     }
+
+    // And each device now lists the other, which is what the tray shows.
+    match alice.call(Request::Devices).await.unwrap() {
+        Response::Devices(devices) => {
+            assert_eq!(devices.len(), 1, "the paired device must be listed");
+            assert!(!devices[0].label.is_empty());
+        }
+        other => panic!("Devices: {other:?}"),
+    }
 }
 
+/// A digit typed wrong must pair nothing at all — not a different device, not
+/// the right device without the check.
 #[tokio::test(flavor = "multi_thread")]
-async fn refusing_the_code_pairs_nothing() {
+async fn a_mistyped_code_pairs_nothing() {
+    let _one_at_a_time = ONE_PAIRING_AT_A_TIME.lock().await;
     let dir_a = TempDir::new().unwrap();
     let dir_b = TempDir::new().unwrap();
     let (_daemon_a, endpoint_a) = start_daemon(&dir_a).await;
@@ -524,48 +545,40 @@ async fn refusing_the_code_pairs_nothing() {
     let mut alice = connect(&endpoint_a).await;
     let mut bob = connect(&endpoint_b).await;
 
-    let uri = match alice.call(Request::BeginPairing).await.unwrap() {
-        Response::PairingOffer { uri, .. } => uri,
+    let code = match alice.call(Request::BeginPairing).await.unwrap() {
+        Response::PairingCode { code, .. } => code,
         other => panic!("BeginPairing: {other:?}"),
     };
-    assert!(matches!(
-        bob.call(Request::PairWithUri { uri }).await.unwrap(),
-        Response::PairingCode { .. }
-    ));
 
-    // The user says the codes do not match — which is what a MITM would cause.
-    for client in [&mut alice, &mut bob] {
-        assert!(matches!(
-            client
-                .call(Request::ConfirmPairing { accept: false })
-                .await
-                .unwrap(),
-            Response::Ok
-        ));
-    }
+    let mistyped: String = code
+        .chars()
+        .map(|c| match c.to_digit(10) {
+            Some(digit) => char::from_digit((digit + 1) % 10, 10).unwrap(),
+            None => c,
+        })
+        .collect();
+
+    assert!(
+        bob.call(Request::PairWithCode { code: mistyped })
+            .await
+            .is_err(),
+        "the wrong six digits must not pair anything"
+    );
 
     for client in [&mut alice, &mut bob] {
         match client.call(Request::Status).await.unwrap() {
             Response::Status(status) => assert_eq!(
                 status.peers_total, 0,
-                "a refused pairing was committed anyway"
+                "a device was trusted on a wrong code"
             ),
             other => panic!("Status: {other:?}"),
         }
     }
-
-    // And confirming afterwards cannot resurrect it.
-    assert!(matches!(
-        alice
-            .call(Request::ConfirmPairing { accept: true })
-            .await
-            .unwrap_err(),
-        clipse_ipc::client::ClientError::Daemon(_)
-    ));
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn answering_a_device_that_is_not_offering_fails_cleanly() {
+    let _one_at_a_time = ONE_PAIRING_AT_A_TIME.lock().await;
     let dir_a = TempDir::new().unwrap();
     let dir_b = TempDir::new().unwrap();
     let (_daemon_a, endpoint_a) = start_daemon(&dir_a).await;
@@ -574,20 +587,20 @@ async fn answering_a_device_that_is_not_offering_fails_cleanly() {
     let mut alice = connect(&endpoint_a).await;
     let mut bob = connect(&endpoint_b).await;
 
-    let uri = match alice.call(Request::BeginPairing).await.unwrap() {
-        Response::PairingOffer { uri, .. } => uri,
+    let code = match alice.call(Request::BeginPairing).await.unwrap() {
+        Response::PairingCode { code, .. } => code,
         other => panic!("BeginPairing: {other:?}"),
     };
 
-    // Alice closes the pairing screen before Bob gets round to scanning.
+    // Alice closes the pairing screen before Bob gets round to typing.
     assert!(matches!(
         alice.call(Request::CancelPairing).await.unwrap(),
         Response::Ok
     ));
 
     assert!(
-        bob.call(Request::PairWithUri { uri }).await.is_err(),
-        "a closed pairing window must refuse the answer"
+        bob.call(Request::PairWithCode { code }).await.is_err(),
+        "a closed pairing window must refuse the code it was showing"
     );
 
     match bob.call(Request::Status).await.unwrap() {

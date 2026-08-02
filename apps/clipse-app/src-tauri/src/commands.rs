@@ -184,86 +184,50 @@ pub async fn devices(state: State<'_, Arc<AppState>>) -> Result<Vec<PeerInfo>, C
     }
 }
 
-/// What `BeginPairing` produces: the string the pairing screen renders as a QR
-/// code, and when it stops being valid.
-#[derive(serde::Serialize)]
-pub struct PairingOffer {
-    pub uri: String,
-    pub expires_at_ms: u64,
-    /// The same offer as a self-contained SVG, ready to drop into the DOM.
-    /// `None` if the payload could not be encoded, in which case the screen
-    /// falls back to the copyable string — which pairs devices identically.
-    pub svg: Option<String>,
-}
-
-/// The six digits both devices show. The user compares them; matching is what
-/// makes the pairing safe, so the screen must present them side by side and
-/// ask, not merely display them.
+/// What `BeginPairing` produces: the six digits to read out, and when they
+/// stop working.
 #[derive(serde::Serialize)]
 pub struct PairingCode {
-    pub digits: String,
+    pub code: String,
+    pub expires_at_ms: u64,
+}
+
+/// What a completed pairing produces. There is nothing for the user to check
+/// afterwards — the two devices already checked each other — so this exists
+/// only to name the device that was added.
+#[derive(serde::Serialize)]
+pub struct Paired {
     pub peer_label: String,
 }
 
 #[tauri::command]
-pub async fn begin_pairing(state: State<'_, Arc<AppState>>) -> Result<PairingOffer, CommandError> {
+pub async fn begin_pairing(state: State<'_, Arc<AppState>>) -> Result<PairingCode, CommandError> {
     match call(&state, Request::BeginPairing).await? {
-        Response::PairingOffer { uri, expires_at_ms } => {
-            let svg = render_qr(&uri);
-            Ok(PairingOffer {
-                uri,
-                expires_at_ms,
-                svg,
-            })
-        }
+        Response::PairingCode {
+            code,
+            expires_at_ms,
+        } => Ok(PairingCode {
+            code,
+            expires_at_ms,
+        }),
         _ => Err(unexpected("begin_pairing")),
     }
 }
 
-/// The offer as an SVG QR code.
+/// The user typed the six digits from the other screen.
 ///
-/// Error correction is deliberately the lowest level the payload allows: the
-/// code is read from a screen a foot away, not off a printed label in a
-/// warehouse, and a lower level keeps the modules large enough to scan on a
-/// small window.
-fn render_qr(uri: &str) -> Option<String> {
-    use qrcode::{EcLevel, QrCode, render::svg};
-
-    let code = QrCode::with_error_correction_level(uri, EcLevel::L).ok()?;
-    Some(
-        code.render::<svg::Color<'_>>()
-            .min_dimensions(200, 200)
-            // currentColor so the code inherits the theme instead of being a
-            // white rectangle on a dark background.
-            .dark_color(svg::Color("currentColor"))
-            .light_color(svg::Color("transparent"))
-            .quiet_zone(true)
-            .build(),
-    )
-}
-
+/// One call, and it either pairs or fails: finding the device, proving the
+/// code to it and proving its keys are the ones it claims all happen inside
+/// the daemon. It can take a moment — the daemon asks every device it can see
+/// on the network — so the screen shows this as work in progress.
 #[tauri::command]
-pub async fn pair_with_uri(
+pub async fn pair_with_code(
     state: State<'_, Arc<AppState>>,
-    uri: String,
-) -> Result<PairingCode, CommandError> {
-    match call(&state, Request::PairWithUri { uri }).await? {
-        Response::PairingCode { digits, peer_label } => Ok(PairingCode { digits, peer_label }),
-        _ => Err(unexpected("pair_with_uri")),
-    }
-}
-
-/// `accept` is the user's answer to "do these six digits match?". Passing true
-/// without having asked would defeat the only defence against a
-/// man-in-the-middle that this protocol has.
-#[tauri::command]
-pub async fn confirm_pairing(
-    state: State<'_, Arc<AppState>>,
-    accept: bool,
-) -> Result<(), CommandError> {
-    match call(&state, Request::ConfirmPairing { accept }).await? {
-        Response::Ok => Ok(()),
-        _ => Err(unexpected("confirm_pairing")),
+    code: String,
+) -> Result<Paired, CommandError> {
+    match call(&state, Request::PairWithCode { code }).await? {
+        Response::Paired { peer_label } => Ok(Paired { peer_label }),
+        _ => Err(unexpected("pair_with_code")),
     }
 }
 

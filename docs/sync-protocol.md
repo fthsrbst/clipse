@@ -8,7 +8,8 @@ that changes shape requires bumping it.
 
 ## 1. Trust model
 
-Two devices talk only if the user paired them by hand (QR + six-digit SAS, see
+Two devices talk only if the user paired them by hand (six digits typed from one
+screen to the other, see
 `clipse-crypto`). There is no server, no directory, no account, and no relay.
 A device that has not been paired cannot get past the handshake.
 

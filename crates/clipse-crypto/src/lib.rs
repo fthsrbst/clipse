@@ -25,8 +25,9 @@ pub mod session;
 pub use error::{Error, Result};
 pub use identity::{DeviceIdentity, DevicePublicKey, Fingerprint};
 pub use pairing::{
-    CandidateAddress, PAIRING_OFFER_TTL_SECS, PairingAccept, PairingConfirm, PairingInitiator,
-    PairingOffer, PairingResponder, Platform, Sas,
+    CandidateAddress, MAX_LOOKUP_ATTEMPTS, PAIRING_OFFER_TTL_SECS, PAIRING_PROTOCOL_VERSION,
+    PairingAccept, PairingAwaitingProof, PairingCode, PairingConfirm, PairingFinish,
+    PairingInitiator, PairingOffer, PairingResponder, PairingWire, Platform,
 };
 pub use rotation::{PairedDevice, Trust};
 pub use session::{

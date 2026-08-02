@@ -77,9 +77,16 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let _ = popup::show_near_cursor(app);
+                    if event.state() != ShortcutState::Pressed {
+                        return;
                     }
+                    // The hotkey fires on the plugin's own listener thread, and
+                    // showing a window — on macOS, reaching into AppKit at all —
+                    // is main-thread work.
+                    let app = app.clone();
+                    let _ = app.clone().run_on_main_thread(move || {
+                        let _ = popup::show_near_cursor(&app);
+                    });
                 })
                 .build(),
         )
@@ -165,8 +172,7 @@ pub fn run() {
             commands::update_settings,
             commands::hide_popup,
             commands::begin_pairing,
-            commands::pair_with_uri,
-            commands::confirm_pairing,
+            commands::pair_with_code,
             commands::cancel_pairing,
             commands::forget_device,
         ])

@@ -48,40 +48,30 @@
   outline-offset: 1px;
 }
 
-.qr {
-  align-self: center;
-  padding: 12px;
-  border-radius: var(--radius-lg);
-  background: var(--color-surface);
-  /* The SVG is drawn with currentColor, so this is what makes it legible in
-     both themes without shipping two images. */
-  color: var(--color-ink);
-  line-height: 0;
-}
-
-.qr svg {
-  display: block;
-  width: 200px;
-  height: 200px;
-}
-
-.offer {
-  display: block;
-  padding: 10px 12px;
+/* Six digits typed off another screen: wide tracking and tabular figures so a
+   3 and an 8 cannot be mistaken for each other at a glance. */
+.codeInput {
+  flex: 0 0 9rem;
+  min-width: 0;
+  padding: 8px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: var(--color-canvas);
-  color: var(--color-ink-secondary);
+  background: var(--color-surface);
+  color: var(--color-ink);
   font-family: var(--font-mono);
-  font-size: var(--type-xs);
-  /* The offer is long and must stay selectable in full — never truncated,
-     or someone will copy half of it and wonder why pairing fails. */
-  word-break: break-all;
-  user-select: all;
+  font-size: var(--type-lg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-wide);
+  text-align: center;
 }
 
-/* The one thing on this screen the user has to actually read and compare, so
-   it is the only thing at this size. */
+.codeInput:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* The one thing on this screen the user has to read and carry to the other
+   machine, so it is the only thing at this size. */
 .digits {
   align-self: center;
   padding: 12px 20px;

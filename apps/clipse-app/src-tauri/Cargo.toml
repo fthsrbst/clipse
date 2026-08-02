@@ -41,15 +41,17 @@ tracing-subscriber.workspace = true
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-opener = "2"
 
-# Renders the pairing offer as an SVG. A compiled-in encoder, not a network
-# call: the rule this app follows is that nothing reaches out at runtime, and
-# a Rust dependency does not.
-qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2.5.1"
 # Registered first in the builder chain: this decides whether the process is
 # the app at all, and everything after it assumes the answer is yes.
 tauri-plugin-single-instance = "2"
+
+# macOS only: the popup has to be told it may appear over a full-screen app,
+# and that is an AppKit property with no Tauri equivalent. Already in the tree
+# via tao, so this adds a line to the manifest and nothing to the binary.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSGraphics"] }
 
 [dev-dependencies]
 # Only used by `examples/mock-daemon.rs` to fabricate a real PNG payload.

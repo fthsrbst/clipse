@@ -39,4 +39,8 @@ pub const MAX_PAYLOAD_BYTES: u64 = 24 * 1024 * 1024;
 /// handshake refuses a mismatch outright (see `client.rs`), so an addition
 /// guarded by a bump needs no optional-field fallback and no degraded path —
 /// both sides are guaranteed to agree.
-pub const IPC_VERSION: u16 = 2;
+///
+/// 3: pairing became a typed six-digit code. `PairWithUri` and
+/// `ConfirmPairing` are gone, because there is no URI to paste and no digits
+/// for the user to compare.
+pub const IPC_VERSION: u16 = 3;

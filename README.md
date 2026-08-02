@@ -18,9 +18,10 @@ on the same encrypted path. Nothing passes through anyone else's machine.
   and not synced — not hidden, not encrypted, never written. The same goes for
   API keys, JWTs, card numbers and private keys. This is enforced in the capture
   path, before a history entry exists.
-- **Syncs directly between your devices.** Paired with a QR code and a six-digit
-  code you compare on both screens. Devices that never exchanged one cannot read
-  your clipboard, cannot ask for it, and cannot join by being on your network.
+- **Syncs directly between your devices.** Paired by reading six digits off one
+  screen and typing them on the other. Devices that never exchanged a code cannot
+  read your clipboard, cannot ask for it, and cannot join by being on your
+  network.
 - **Handles more than text.** Images and files travel too; payloads too large to
   inline are content-addressed and transferred on their own streams.
 - **Keeps working when the window is closed.** Sync lives in a background daemon,
@@ -35,11 +36,15 @@ surface you actually use; the history window is for when you need to go digging.
 
 ## Pairing
 
-Two machines become a pair by showing a code on one and comparing it on the
-other. Until you confirm those digits, nothing is trusted and nothing is
-exchanged — the cryptography guarantees a man-in-the-middle cannot make both
-screens show the *same* digits, and comparing them is what makes that guarantee
-yours.
+One device shows six digits; you type them on the other. That is the whole
+ceremony — no link to paste, no code to compare afterwards. The digits are a
+shared secret, not a label: both devices fold them into a transcript that also
+covers each other's public keys, and each proves to the other that it derived
+the same one. Someone sitting between your two machines cannot produce those
+proofs, so the *devices* refuse rather than leaving you to notice.
+
+A code is good for one pairing, expires after three minutes, and a device being
+guessed at stops answering after a handful of wrong codes.
 
 ![The pairing section of Settings](docs/media/pairing.png)
 

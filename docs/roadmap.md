@@ -37,7 +37,7 @@ the real thing by a person.
 
 ## F2 — Two devices
 
-- `clipse-crypto` ✅ — device identity, QR + six-digit SAS pairing, Noise_IK
+- `clipse-crypto` ✅ — device identity, six-digit code pairing, Noise_IK
   sessions, trust epochs that invalidate a removed device.
 - `clipse-sync` ✅ — merge rules, the three-layer loop guard, chunked transfer
   with resume and digest verification.
@@ -53,25 +53,21 @@ what it finds into the candidate list of devices it already trusts. Discovery
 never adds a peer — an advertisement is an address for someone you already
 paired with, not an invitation.
 
-Pairing works end to end over IPC: one device shows a QR payload, the other
-answers it over the network, both compute six digits, and neither trusts
-anything until both are told the digits matched. Three tests drive two real
-daemon processes through it — including refusing the code, which must pair
+Pairing works end to end over IPC: one device shows six digits, the other is
+told those digits and finds it — over mDNS on a LAN, over the tailnet peer list
+otherwise — and the two prove to each other that they know the code and that
+neither one's static key was swapped in transit. Three tests drive two real
+daemon processes through it, including mistyping the code, which must pair
 nothing.
 
-**F2 is complete**, including the pairing screen in Settings. It shows the
-offer, takes a pasted one from the other device, puts the six digits on screen
-and asks whether they match — and the button that commits the pairing is
-disabled anywhere the code is not visible, which the reducer behind it is
-tested for exhaustively.
+**F2 is complete**, including the pairing screen in Settings. It shows the code
+on one device, takes six digits on the other, and lists the paired devices with
+whether each is actually reachable.
 
-The offer appears as a QR code *and* as a copyable string. The string is not a
-fallback nobody uses: pairing a desktop to a desktop means copying text,
-because neither has a camera pointed at the other.
-
-The QR is rendered to SVG in the Tauri command by a compiled-in encoder. The
-rule this app follows is that nothing reaches out at runtime — no CDN, no
-fonts, no telemetry — and a Rust dependency does not violate it.
+The QR code and the pasted `clipse://pair/…` URI are gone (2026-08-02). They
+were a long string a user had to move between machines by hand, and the flow
+ended in a comparison step people click through. See `docs/decisions.md` for
+what replaced them and what that trades away.
 
 ## F3 — macOS notch
 

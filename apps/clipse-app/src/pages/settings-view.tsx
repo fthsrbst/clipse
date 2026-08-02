@@ -3,6 +3,7 @@ import { HotkeyInput } from "../components/hotkey-input";
 import { ToggleSwitch } from "../components/toggle-switch";
 import { TagListInput } from "../components/tag-list-input";
 import { PairingPanel } from "../components/pairing-panel";
+import { DeviceList } from "../components/device-list";
 import { CaptureModeBanner } from "../components/capture-mode-banner";
 import { DaemonOfflineState } from "../components/daemon-offline-state";
 import { WindowControls } from "../components/window-controls";
@@ -158,6 +159,7 @@ export function SettingsView({ status }: SettingsViewProps) {
                 description="Your clipboard is only ever shared with devices you pair here."
                 stacked
               >
+                <DeviceList />
                 <PairingPanel />
               </Row>
             </Section>

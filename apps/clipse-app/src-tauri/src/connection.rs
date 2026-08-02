@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clipse_ipc::client::EventStream;
-use clipse_ipc::{Client, DaemonStatus, Event, Request, Response};
+use clipse_ipc::{Client, DaemonStatus, Event, PeerInfo, Request, Response};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
 
@@ -72,6 +72,12 @@ async fn run_loop(app: AppHandle, state: Arc<AppState>) {
                         crate::autostart::apply_from_settings(&app, Arc::clone(&state));
                     }
                 }
+
+                // The tray lists the paired devices, and nothing pushes that
+                // list on connect — a `DeviceChanged` only arrives when one of
+                // them changes, which for a device that has been offline all
+                // day is never.
+                forward_devices(&app, fetch_devices(&state).await);
 
                 #[cfg(target_os = "macos")]
                 notch_refresh(&state, &local_device).await;
@@ -146,6 +152,17 @@ async fn notch_refresh(state: &Arc<AppState>, local_device: &str) {
     }
 }
 
+async fn fetch_devices(state: &AppState) -> Vec<PeerInfo> {
+    let mut guard = state.client.lock().await;
+    let Some(client) = guard.as_mut() else {
+        return Vec::new();
+    };
+    match client.call(Request::Devices).await {
+        Ok(Response::Devices(devices)) => devices,
+        _ => Vec::new(),
+    }
+}
+
 async fn fetch_status(state: &AppState) -> Option<DaemonStatus> {
     let mut guard = state.client.lock().await;
     let client = guard.as_mut()?;
@@ -158,6 +175,11 @@ async fn fetch_status(state: &AppState) -> Option<DaemonStatus> {
 fn forward_status(app: &AppHandle, status: &DaemonStatus) {
     let _ = app.emit("status-changed", status);
     tray::on_status(app, status);
+}
+
+fn forward_devices(app: &AppHandle, devices: Vec<PeerInfo>) {
+    let _ = app.emit("devices-changed", &devices);
+    tray::on_devices(app, devices);
 }
 
 fn forward_event(app: &AppHandle, event: Event) {
@@ -173,15 +195,16 @@ fn forward_event(app: &AppHandle, event: Event) {
         }
         Event::StatusChanged(status) => forward_status(app, &status),
         Event::DeviceChanged(peer) => {
-            let _ = app.emit("device-changed", peer);
+            let _ = app.emit("device-changed", &peer);
+            tray::on_device_changed(app, peer);
         }
         Event::Suppressed { reason } => {
             let _ = app.emit("suppressed", reason);
         }
-        // Both devices show these six digits and the user compares them, so
-        // they go straight to the webview with no interpretation here.
-        Event::PairingCode { digits, peer_label } => {
-            let _ = app.emit("pairing-code", (digits, peer_label));
+        // The offering device has no other way to learn that the ceremony it
+        // put six digits on screen for actually finished.
+        Event::PairingSucceeded { peer_label } => {
+            let _ = app.emit("pairing-succeeded", peer_label);
         }
         Event::PairingEnded { reason } => {
             let _ = app.emit("pairing-ended", reason);

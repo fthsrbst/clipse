@@ -214,13 +214,23 @@ async fn offer_our_history(
         }
     };
 
-    for hash in wanted {
-        // Served from the store rather than from the page we just built: the
-        // history may have changed since, and the store is the truth.
-        let store = Arc::clone(&ctx.store);
-        let found =
-            tokio::task::spawn_blocking(move || store.by_hash_including_deleted(&hash)).await??;
-        match found {
+    // Read in one hop rather than one per hash. A `spawn_blocking` per clip
+    // means a thread handoff per clip, which on a first sync of a few hundred
+    // clips is most of the session's wall clock and none of its work.
+    //
+    // Served from the store rather than from the page just built: the history
+    // may have changed since, and the store is the truth.
+    let store = Arc::clone(&ctx.store);
+    let found = tokio::task::spawn_blocking(move || {
+        wanted
+            .iter()
+            .map(|hash| store.by_hash_including_deleted(hash))
+            .collect::<clipse_store::Result<Vec<_>>>()
+    })
+    .await??;
+
+    for clip in found {
+        match clip {
             Some(clip) => {
                 link.send(&SyncMessage::Push {
                     clip: Box::new(clip),
@@ -246,6 +256,9 @@ async fn offer_our_history(
     };
 
     for digest in &blob_digests {
+        // One at a time here, unlike the summary walk above: a blob is measured
+        // in megabytes, and reading them all into memory before sending any
+        // would trade a thread handoff for the whole transfer's footprint.
         let store = Arc::clone(&ctx.store);
         let digest = *digest;
         let bytes = tokio::task::spawn_blocking(move || store.read_blob(&digest)).await?;
@@ -301,20 +314,27 @@ async fn take_their_history(
         }
     }
 
-    let mut wanted = Vec::new();
-    for entry in &entries {
-        let store = Arc::clone(&ctx.store);
-        let hash = entry.hash;
-        let local =
-            tokio::task::spawn_blocking(move || store.by_hash_including_deleted(&hash)).await??;
-        let take = match &local {
-            None => true,
-            Some(existing) => entry.hlc > existing.hlc,
-        };
-        if take {
-            wanted.push(entry.hash);
+    // The whole summary is compared in one hop off the runtime — see the note
+    // in `offer_our_history` about what a `spawn_blocking` per clip costs.
+    let store = Arc::clone(&ctx.store);
+    let summary: Vec<(ContentHash, Hlc)> = entries
+        .iter()
+        .map(|entry| (entry.hash, entry.hlc))
+        .collect();
+    let wanted = tokio::task::spawn_blocking(move || -> clipse_store::Result<Vec<ContentHash>> {
+        let mut wanted = Vec::new();
+        for (hash, hlc) in summary {
+            let take = match store.by_hash_including_deleted(&hash)? {
+                None => true,
+                Some(existing) => hlc > existing.hlc,
+            };
+            if take {
+                wanted.push(hash);
+            }
         }
-    }
+        Ok(wanted)
+    })
+    .await??;
 
     let expected = wanted.len();
     link.send(&SyncMessage::Want { hashes: wanted }).await?;
@@ -359,14 +379,18 @@ async fn take_their_history(
 
     // Ask for the payload bytes of everything just applied that we do not
     // already hold. Order matters: the sender streams them back in this order.
-    let mut needed: Vec<ContentHash> = Vec::new();
-    for digest in missing_blobs {
-        let store = Arc::clone(&ctx.store);
-        let held = tokio::task::spawn_blocking(move || store.has_blob(&digest)).await??;
-        if !held && !needed.contains(&digest) {
-            needed.push(digest);
-        }
-    }
+    let store = Arc::clone(&ctx.store);
+    let needed: Vec<ContentHash> =
+        tokio::task::spawn_blocking(move || -> clipse_store::Result<Vec<ContentHash>> {
+            let mut needed: Vec<ContentHash> = Vec::new();
+            for digest in missing_blobs {
+                if !store.has_blob(&digest)? && !needed.contains(&digest) {
+                    needed.push(digest);
+                }
+            }
+            Ok(needed)
+        })
+        .await??;
 
     link.send(&SyncMessage::Want {
         hashes: needed.clone(),

@@ -1,75 +1,63 @@
 /**
  * Pairing, as the user experiences it.
  *
- * The screen's job is not to display two codes — it is to *ask* whether they
- * match. Everything else here (the offer string, the paste field, the states)
- * exists to get to that question honestly, and the confirm button is disabled
- * until both codes are actually on screen.
- *
- * The offer is shown as a QR code and as a copyable string. The string is not
- * a fallback nobody uses: pairing a desktop to a desktop means copying text,
- * because neither has a camera pointed at the other.
+ * One number, one direction. The device you are standing at either shows six
+ * digits or takes six digits — and once they are typed there is nothing left
+ * to do: the two devices verify each other rather than asking the user to
+ * compare anything. See `crates/clipse-crypto/src/pairing.rs` for why that is
+ * safe, and for the one attack it does not stop.
  */
 
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useState } from "react";
+import { useReducer } from "react";
 
-import { DevicesIcon, CheckIcon, CloseIcon } from "./icons";
+import { DevicesIcon, CheckIcon } from "./icons";
 import {
   type PairingState,
-  canConfirm,
+  canConnect,
+  digitsOnly,
   isBusy,
   pairingReducer,
 } from "../lib/pairing-machine";
-import { api, onPairingCode, onPairingEnded } from "../lib/tauri-client";
+import { api, onPairingEnded, onPairingSucceeded } from "../lib/tauri-client";
 import styles from "./pairing-panel.module.css";
 
 const INITIAL: PairingState = { step: "idle" };
 
 export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
   const [state, dispatch] = useReducer(pairingReducer, INITIAL);
-  const [pasted, setPasted] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [typed, setTyped] = useState("");
 
-  // The device that showed the offer learns its code from an event, because
-  // the answer arrives over the network rather than through this window.
+  // The device showing the digits finds out from an event: the ceremony
+  // happens over the network, not through this window.
   useEffect(() => {
-    const code = onPairingCode((code) => dispatch({ type: "code", code, role: "offered" }));
+    const succeeded = onPairingSucceeded((peerLabel) => {
+      dispatch({ type: "paired", paired: { peer_label: peerLabel } });
+      onPaired?.();
+    });
     const ended = onPairingEnded((reason) => dispatch({ type: "fail", reason }));
     return () => {
-      void code.then((un) => un());
+      void succeeded.then((un) => un());
       void ended.then((un) => un());
     };
-  }, []);
+  }, [onPaired]);
 
-  async function begin() {
+  async function show() {
     dispatch({ type: "begin" });
     try {
-      dispatch({ type: "offered", offer: await api.beginPairing() });
+      dispatch({ type: "showing", code: await api.beginPairing() });
     } catch (err) {
       dispatch({ type: "fail", reason: message(err) });
     }
   }
 
-  async function answer() {
-    dispatch({ type: "answer" });
+  async function connect() {
+    dispatch({ type: "connect" });
     try {
-      const code = await api.pairWithUri(pasted.trim());
-      dispatch({ type: "code", code, role: "answered" });
-    } catch (err) {
-      dispatch({ type: "fail", reason: message(err) });
-    }
-  }
-
-  async function decide(matches: boolean) {
-    if (matches) dispatch({ type: "confirm" });
-    try {
-      await api.confirmPairing(matches);
-      if (matches) {
-        dispatch({ type: "confirmed" });
-        onPaired?.();
-      } else {
-        dispatch({ type: "cancel" });
-      }
+      const paired = await api.pairWithCode(digitsOnly(typed));
+      dispatch({ type: "paired", paired });
+      setTyped("");
+      onPaired?.();
     } catch (err) {
       dispatch({ type: "fail", reason: message(err) });
     }
@@ -80,7 +68,7 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
       await api.cancelPairing();
     } finally {
       dispatch({ type: "cancel" });
-      setPasted("");
+      setTyped("");
     }
   }
 
@@ -89,28 +77,34 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
       {state.step === "idle" && (
         <div className={styles.start}>
           <p className={styles.lead}>
-            Pair another computer to share your clipboard with it. Nothing
-            leaves this device until you have compared a code on both screens.
+            Pair another computer to share your clipboard with it. One of the
+            two devices shows a six-digit code; you type it on the other.
           </p>
           <div className={styles.row}>
-            <button type="button" className={styles.primary} onClick={begin}>
-              <DevicesIcon /> Show a pairing code
+            <button type="button" className={styles.primary} onClick={show}>
+              <DevicesIcon /> Show a code
             </button>
           </div>
-          <div className={styles.divider}>or paste one from the other device</div>
+          <div className={styles.divider}>or type the code from the other device</div>
           <div className={styles.row}>
             <input
-              className={styles.input}
-              placeholder="clipse://pair/…"
-              value={pasted}
-              onChange={(e) => setPasted(e.target.value)}
-              aria-label="Pairing code from the other device"
+              className={styles.codeInput}
+              placeholder="000000"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={7}
+              value={typed}
+              onChange={(e) => setTyped(digitsOnly(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canConnect(typed, state)) void connect();
+              }}
+              aria-label="The six digits shown on the other device"
             />
             <button
               type="button"
               className={styles.secondary}
-              disabled={!pasted.trim().startsWith("clipse://pair/")}
-              onClick={answer}
+              disabled={!canConnect(typed, state)}
+              onClick={connect}
             >
               Connect
             </button>
@@ -119,36 +113,24 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
       )}
 
       {state.step === "starting" && <p className={styles.lead}>Preparing…</p>}
-      {state.step === "answering" && <p className={styles.lead}>Reaching the other device…</p>}
+      {state.step === "connecting" && (
+        <p className={styles.lead}>Looking for the device showing that code…</p>
+      )}
 
-      {state.step === "offering" && (
+      {state.step === "showing" && (
         <div className={styles.start}>
           <p className={styles.lead}>
-            Scan this on the other computer, or paste the text below into
-            Clipse there. It stops working in a few minutes.
+            Type these six digits into Clipse on the other computer. They stop
+            working in a few minutes.
           </p>
-          {state.offer.svg && (
-            <div
-              className={styles.qr}
-              role="img"
-              aria-label="Pairing code"
-              // The SVG comes from our own Rust command, not from anything the
-              // network said, so there is nothing here to sanitise.
-              dangerouslySetInnerHTML={{ __html: state.offer.svg }}
-            />
-          )}
-          <code className={styles.offer}>{state.offer.uri}</code>
+          <div className={styles.digits} aria-label="Pairing code">
+            {state.code.code}
+          </div>
+          <p className={styles.warning}>
+            Only ever read this code off your own screen. Anyone you send it to
+            can pair with this device while it is showing.
+          </p>
           <div className={styles.row}>
-            <button
-              type="button"
-              className={styles.secondary}
-              onClick={async () => {
-                await navigator.clipboard.writeText(state.offer.uri);
-                setCopied(true);
-              }}
-            >
-              {copied ? <CheckIcon /> : null} {copied ? "Copied" : "Copy"}
-            </button>
             <button type="button" className={styles.ghost} onClick={cancel}>
               Cancel
             </button>
@@ -156,42 +138,17 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
         </div>
       )}
 
-      {state.step === "comparing" && (
-        <div className={styles.compare}>
-          <p className={styles.lead}>
-            <strong>{state.code.peer_label}</strong> answered. Does it show
-            these same six digits?
-          </p>
-          <div className={styles.digits} aria-label="Pairing code">
-            {state.code.digits}
-          </div>
-          <p className={styles.warning}>
-            If the two screens differ, someone is between your devices. Say no.
-          </p>
-          <div className={styles.row}>
-            <button
-              type="button"
-              className={styles.primary}
-              disabled={!canConfirm(state)}
-              onClick={() => decide(true)}
-            >
-              <CheckIcon /> They match
-            </button>
-            <button type="button" className={styles.danger} onClick={() => decide(false)}>
-              <CloseIcon /> They do not
-            </button>
-          </div>
-        </div>
-      )}
-
-      {state.step === "confirming" && <p className={styles.lead}>Pairing…</p>}
-
       {state.step === "paired" && (
         <div className={styles.start}>
           <p className={styles.done}>
-            <CheckIcon /> Paired. Your clipboard will start syncing shortly.
+            <CheckIcon /> Paired with {state.peerLabel || "the other device"}.
+            Your clipboard is syncing.
           </p>
-          <button type="button" className={styles.ghost} onClick={() => dispatch({ type: "cancel" })}>
+          <button
+            type="button"
+            className={styles.ghost}
+            onClick={() => dispatch({ type: "cancel" })}
+          >
             Pair another
           </button>
         </div>
@@ -200,13 +157,17 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
       {state.step === "failed" && (
         <div className={styles.start}>
           <p className={styles.error}>{state.reason}</p>
-          <button type="button" className={styles.secondary} onClick={() => dispatch({ type: "cancel" })}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => dispatch({ type: "cancel" })}
+          >
             Try again
           </button>
         </div>
       )}
 
-      {isBusy(state) && state.step !== "comparing" && state.step !== "offering" && (
+      {isBusy(state) && state.step !== "showing" && (
         <button type="button" className={styles.ghost} onClick={cancel}>
           Cancel
         </button>

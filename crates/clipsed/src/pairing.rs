@@ -3,22 +3,27 @@
 //! Three states, and the transitions between them are the security boundary:
 //!
 //! 1. **Idle** — inbound pairing attempts are refused.
-//! 2. **Offering** — the user is looking at a QR code. Exactly one attempt is
-//!    accepted, and only until the offer expires.
-//! 3. **AwaitingConfirmation** — both devices have computed six digits and the
-//!    user is comparing them. **Nothing is trusted yet.** The pairing is
-//!    committed only when `ConfirmPairing { accept: true }` arrives, which is
-//!    the daemon's proxy for "the human said the digits match".
+//! 2. **Offering** — the user is looking at six digits. Lookups that do not
+//!    match the code are refused and *counted*; a handful of wrong guesses
+//!    cancels the offer, which is what keeps a six-digit secret meaningful
+//!    against someone on the same network.
+//! 3. **Proving** — the far side answered, we have sent our proof, and we are
+//!    waiting for theirs. **Nothing is trusted yet.** The pairing is committed
+//!    only when the responder's MAC verifies — that is the moment a device
+//!    enters the trust set, and it is a machine check, not a human one.
 //!
-//! That last point is the whole design. `clipse-crypto` guarantees a
-//! man-in-the-middle cannot make the two sides compute the *same* digits; it
-//! cannot guarantee anyone looked. This module is what makes looking matter.
+//! There is no "the user compares two codes" step any more. `clipse-crypto`
+//! guarantees that a man-in-the-middle who substitutes a static key cannot
+//! produce a MAC either side accepts, so the check that used to depend on
+//! someone actually looking now happens here. See that crate's module docs for
+//! what this does and does not defend against.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clipse_crypto::{
-    CandidateAddress, DeviceIdentity, PairedDevice, PairingAccept, PairingConfirm,
-    PairingInitiator, PairingOffer, PairingResponder, Platform, Sas,
+    CandidateAddress, DeviceIdentity, MAX_LOOKUP_ATTEMPTS, PairedDevice, PairingAccept,
+    PairingAwaitingProof, PairingCode, PairingConfirm, PairingFinish, PairingInitiator,
+    PairingOffer, Platform,
 };
 use tracing::debug;
 
@@ -29,9 +34,9 @@ use tracing::debug;
 /// caller *why* a handshake did not verify is telling an attacker which half of
 /// their guess was right. That leaves the operator with a message that
 /// `clipse-crypto` renders identically, so nothing in the error itself says
-/// whether a URI failed to parse, the network call failed, or the SAS did not
+/// whether a payload failed to parse, the network call failed, or a MAC did not
 /// verify. This log line is the only place that distinction survives.
-fn failed(step: &'static str, error: impl std::fmt::Display) -> PairingError {
+pub fn failed(step: &'static str, error: impl std::fmt::Display) -> PairingError {
     debug!(step, %error, "pairing failed");
     PairingError::Failed
 }
@@ -47,6 +52,9 @@ pub enum PairingError {
     #[error("that pairing code has expired")]
     Expired,
 
+    #[error("no device on this network is showing that code")]
+    NotFound,
+
     #[error("pairing failed")]
     Failed,
 }
@@ -56,142 +64,140 @@ pub enum PairingError {
 pub enum PairingState {
     #[default]
     Idle,
-    /// Showing a QR code and willing to accept one answer.
+    /// Showing six digits and willing to answer the device that knows them.
     Offering {
         initiator: Box<PairingInitiator>,
         expires_at_ms: u64,
+        /// Wrong tags seen since this offer went up. See
+        /// [`clipse_crypto::MAX_LOOKUP_ATTEMPTS`].
+        wrong_lookups: u32,
     },
-    /// Digits computed on both sides; waiting for the user.
-    AwaitingConfirmation {
-        peer: Box<PairedDevice>,
-        digits: String,
-    },
+    /// We answered; the far side still has to prove it derived the same
+    /// transcript. Nothing is trusted in this state.
+    Proving { awaiting: Box<PairingAwaitingProof> },
+    /// This device is the one doing the typing. Held so a second attempt is
+    /// refused rather than interleaved.
+    Answering,
+}
+
+/// What an inbound lookup should be answered with.
+pub enum LookupOutcome {
+    /// The tag matched: hand over the offer and stay in the ceremony.
+    Offer(Box<PairingOffer>),
+    /// Not us, or not now. Says nothing about which.
+    Refuse,
 }
 
 impl PairingState {
-    pub fn is_offering(&self) -> bool {
-        matches!(self, Self::Offering { .. })
+    pub fn is_busy(&self) -> bool {
+        !matches!(self, Self::Idle)
     }
 
-    /// Begin as the initiator. `addresses` are what a peer should dial us on.
+    /// Begin as the offering device. `addresses` are what a peer should dial
+    /// us on. Returns the digits to put on screen and when they stop working.
     pub fn begin(
         &mut self,
         identity: &DeviceIdentity,
         label: String,
         addresses: Vec<CandidateAddress>,
-    ) -> Result<(String, u64), PairingError> {
-        if !matches!(self, Self::Idle) {
+    ) -> Result<(PairingCode, u64), PairingError> {
+        if self.is_busy() {
             return Err(PairingError::AlreadyInProgress);
         }
 
         let now = now_ms();
         let initiator = PairingInitiator::create(identity, label, platform(), addresses, now);
-        let uri = initiator.to_uri();
+        let code = *initiator.code();
         let expires_at_ms = initiator.offer().expires_at_ms;
 
         *self = Self::Offering {
             initiator: Box::new(initiator),
             expires_at_ms,
+            wrong_lookups: 0,
         };
-        Ok((uri, expires_at_ms))
+        Ok((code, expires_at_ms))
     }
 
-    /// An answer arrived on the pairing ALPN. Produces the `PairingConfirm`
-    /// bytes to send back, and moves to awaiting the user's comparison.
-    pub fn accept_answer(&mut self, accept_bytes: &[u8]) -> Result<Vec<u8>, PairingError> {
+    /// Claim the state for a ceremony this device is driving, so an inbound
+    /// attempt and a second `PairWithCode` cannot run over it.
+    pub fn begin_answering(&mut self) -> Result<(), PairingError> {
+        if self.is_busy() {
+            return Err(PairingError::AlreadyInProgress);
+        }
+        *self = Self::Answering;
+        Ok(())
+    }
+
+    /// Somebody asked whether a tag is ours.
+    ///
+    /// A wrong tag is counted, and enough of them retire the offer: a lookup
+    /// is a guess at the code, and an unbounded number of guesses would make
+    /// six digits worth nothing on a network an attacker can reach.
+    pub fn lookup(&mut self, tag: &[u8; 16]) -> LookupOutcome {
+        self.expire_if_stale();
+        let Self::Offering {
+            initiator,
+            wrong_lookups,
+            ..
+        } = self
+        else {
+            return LookupOutcome::Refuse;
+        };
+
+        if initiator.answers(tag) {
+            return LookupOutcome::Offer(Box::new(initiator.offer().clone()));
+        }
+
+        *wrong_lookups += 1;
+        if *wrong_lookups >= MAX_LOOKUP_ATTEMPTS {
+            debug!("too many wrong pairing codes tried; the offer is cancelled");
+            *self = Self::Idle;
+        }
+        LookupOutcome::Refuse
+    }
+
+    /// The far side sent its accept. Produces the confirm to send back and
+    /// moves to waiting for its proof.
+    pub fn answer_accept(
+        &mut self,
+        accept: &PairingAccept,
+    ) -> Result<PairingConfirm, PairingError> {
         let Self::Offering {
             initiator,
             expires_at_ms,
+            ..
         } = std::mem::take(self)
         else {
             return Err(PairingError::NotInProgress);
         };
 
-        let now = now_ms();
-        if now > expires_at_ms {
+        if now_ms() > expires_at_ms {
             return Err(PairingError::Expired);
         }
 
-        let accept =
-            PairingAccept::from_bytes(accept_bytes).map_err(|e| failed("parse accept", e))?;
-        let (confirm, sas, peer) = initiator
-            .accept(&accept, now)
+        let (confirm, awaiting) = initiator
+            .accept(accept, now_ms())
             .map_err(|e| failed("initiator accept", e))?;
 
-        *self = Self::AwaitingConfirmation {
-            peer: Box::new(peer),
-            digits: format_sas(&sas),
+        *self = Self::Proving {
+            awaiting: Box::new(awaiting),
         };
-        Ok(confirm.to_bytes())
+        Ok(confirm)
     }
 
-    /// Answer someone else's QR code. `send` carries the accept bytes to them
-    /// and returns their confirm bytes.
-    pub async fn answer_offer<F, Fut>(
-        &mut self,
-        uri: &str,
-        identity: &DeviceIdentity,
-        label: String,
-        addresses: Vec<CandidateAddress>,
-        send: F,
-    ) -> Result<(), PairingError>
-    where
-        F: FnOnce(Vec<CandidateAddress>, Vec<u8>) -> Fut,
-        Fut: std::future::Future<Output = Result<Vec<u8>, String>>,
-    {
-        if !matches!(self, Self::Idle) {
-            return Err(PairingError::AlreadyInProgress);
-        }
-
-        let now = now_ms();
-        // Where to reach them comes from the QR code itself, so it is read
-        // before the responder consumes the URI.
-        let peer_addresses = PairingOffer::from_uri(uri)
-            .map_err(|e| failed("parse offer uri", e))?
-            .addresses;
-
-        let (responder, accept) =
-            PairingResponder::from_offer(uri, identity, label, platform(), addresses, now)
-                .map_err(|e| failed("build responder", e))?;
-        let confirm_bytes = send(peer_addresses, accept.to_bytes())
-            .await
-            .map_err(|e| failed("send accept", e))?;
-
-        let confirm =
-            PairingConfirm::from_bytes(&confirm_bytes).map_err(|e| failed("parse confirm", e))?;
-        let (sas, peer) = responder
-            .verify(&confirm, now_ms())
-            .map_err(|e| failed("verify confirm", e))?;
-
-        *self = Self::AwaitingConfirmation {
-            peer: Box::new(peer),
-            digits: format_sas(&sas),
+    /// The far side's proof arrived. This is the only place a device the user
+    /// did not type a code for can enter the trust set — and it cannot, because
+    /// the MAC would not verify.
+    pub fn finish(&mut self, finish: &PairingFinish) -> Result<PairedDevice, PairingError> {
+        let Self::Proving { awaiting } = std::mem::take(self) else {
+            return Err(PairingError::NotInProgress);
         };
-        Ok(())
+        awaiting
+            .verify(finish)
+            .map_err(|e| failed("verify responder proof", e))
     }
 
-    /// The digits to show the user, if there are any.
-    pub fn digits(&self) -> Option<(String, String)> {
-        match self {
-            Self::AwaitingConfirmation { peer, digits } => {
-                Some((digits.clone(), peer.label.clone()))
-            }
-            _ => None,
-        }
-    }
-
-    /// The user said the digits match. Returns the device to trust.
-    pub fn confirm(&mut self) -> Result<PairedDevice, PairingError> {
-        match std::mem::take(self) {
-            Self::AwaitingConfirmation { peer, .. } => Ok(*peer),
-            other => {
-                *self = other;
-                Err(PairingError::NotInProgress)
-            }
-        }
-    }
-
-    /// The user said no, or closed the screen, or it timed out.
+    /// The user closed the screen, said no, or it timed out.
     pub fn cancel(&mut self) {
         *self = Self::Idle;
     }
@@ -209,11 +215,7 @@ impl PairingState {
     }
 }
 
-fn format_sas(sas: &Sas) -> String {
-    sas.to_string()
-}
-
-fn platform() -> Platform {
+pub fn platform() -> Platform {
     match std::env::consts::OS {
         "windows" => Platform::Windows,
         "macos" => Platform::MacOs,
@@ -222,7 +224,7 @@ fn platform() -> Platform {
     }
 }
 
-fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -232,6 +234,7 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use clipse_core::DeviceId;
+    use clipse_crypto::PairingResponder;
 
     use super::*;
 
@@ -243,13 +246,72 @@ mod tests {
         vec![CandidateAddress::Lan("127.0.0.1:7420".parse().unwrap())]
     }
 
-    #[test]
-    fn an_idle_daemon_refuses_pairing_answers() {
+    /// Drives the typing side against an offering `PairingState`, the way the
+    /// two daemons do over one QUIC connection.
+    fn run_ceremony(
+        state: &mut PairingState,
+        code: PairingCode,
+        typist: &DeviceIdentity,
+    ) -> Result<PairedDevice, PairingError> {
+        let LookupOutcome::Offer(offer) = state.lookup(&code.tag()) else {
+            return Err(PairingError::NotFound);
+        };
+
+        let (responder, accept) = PairingResponder::from_offer(
+            *offer,
+            code,
+            typist,
+            "typist".into(),
+            platform(),
+            addr(),
+            now_ms(),
+        )
+        .map_err(|e| failed("build responder", e))?;
+
+        let confirm = state.answer_accept(&accept)?;
+        let (finish, _their_view) = responder
+            .verify(&confirm, now_ms())
+            .map_err(|e| failed("verify offer proof", e))?;
+        state.finish(&finish)
+    }
+
+    /// A structurally valid `PairingFinish`, produced by a real ceremony
+    /// between two other devices. Used to check that a state which is not in
+    /// a ceremony refuses one outright rather than verifying it.
+    fn a_valid_finish() -> PairingFinish {
+        let offering = identity();
+        let typist = identity();
         let mut state = PairingState::default();
-        assert!(matches!(
-            state.accept_answer(b"anything"),
-            Err(PairingError::NotInProgress)
-        ));
+        let (code, _) = state.begin(&offering, "elsewhere".into(), addr()).unwrap();
+
+        let LookupOutcome::Offer(offer) = state.lookup(&code.tag()) else {
+            panic!("the offering state must answer its own tag");
+        };
+        let (responder, accept) = PairingResponder::from_offer(
+            *offer,
+            code,
+            &typist,
+            "typist".into(),
+            platform(),
+            addr(),
+            now_ms(),
+        )
+        .unwrap();
+        let confirm = state.answer_accept(&accept).unwrap();
+        responder.verify(&confirm, now_ms()).unwrap().0
+    }
+
+    #[test]
+    fn an_idle_daemon_refuses_pairing_attempts() {
+        let mut state = PairingState::default();
+        assert!(matches!(state.lookup(&[0u8; 16]), LookupOutcome::Refuse));
+        assert!(
+            matches!(
+                state.finish(&a_valid_finish()),
+                Err(PairingError::NotInProgress)
+            ),
+            "a proof from someone else's ceremony must trust nobody"
+        );
     }
 
     #[test]
@@ -263,77 +325,76 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn a_full_ceremony_agrees_on_the_digits_and_only_then_commits() {
-        let alice = identity();
-        let bob = identity();
+    #[test]
+    fn a_typed_code_pairs_and_nothing_is_trusted_before_the_proof() {
+        let offering = identity();
+        let typist = identity();
 
-        let mut alice_state = PairingState::default();
-        let (uri, _) = alice_state.begin(&alice, "alice".into(), addr()).unwrap();
+        let mut state = PairingState::default();
+        let (code, _) = state.begin(&offering, "offering".into(), addr()).unwrap();
 
-        // Bob answers, with Alice's side wired in as the "network".
-        let mut bob_state = PairingState::default();
-        let alice_cell = std::sync::Arc::new(std::sync::Mutex::new(alice_state));
-        let alice_for_send = std::sync::Arc::clone(&alice_cell);
-
-        bob_state
-            .answer_offer(
-                &uri,
-                &bob,
-                "bob".into(),
-                addr(),
-                |_addrs, accept| async move {
-                    alice_for_send
-                        .lock()
-                        .unwrap()
-                        .accept_answer(&accept)
-                        .map_err(|e| e.to_string())
-                },
-            )
-            .await
-            .unwrap();
-
-        alice_state = std::sync::Arc::try_unwrap(alice_cell)
-            .unwrap_or_else(|_| panic!("send closure outlived the ceremony"))
-            .into_inner()
-            .unwrap();
-
-        let (alice_digits, bob_label) = alice_state.digits().expect("alice has digits");
-        let (bob_digits, alice_label) = bob_state.digits().expect("bob has digits");
-        assert_eq!(
-            alice_digits, bob_digits,
-            "the user would be comparing two different codes"
-        );
-        assert_eq!(bob_label, "bob");
-        assert_eq!(alice_label, "alice");
-
-        // Nothing is trusted until the user says so: the digits exist, but no
-        // device has been handed over yet.
-        assert!(alice_state.digits().is_some());
-        let paired_bob = alice_state.confirm().unwrap();
-        assert_eq!(paired_bob.device_id, bob.device_id());
-        assert!(matches!(alice_state, PairingState::Idle));
+        let paired = run_ceremony(&mut state, code, &typist).expect("honest ceremony");
+        assert_eq!(paired.device_id, typist.device_id());
+        assert_eq!(paired.static_public, typist.public_key());
+        assert!(matches!(state, PairingState::Idle));
     }
 
     #[test]
-    fn refusing_leaves_nothing_behind() {
-        let identity = identity();
+    fn a_wrong_code_never_reaches_the_ceremony() {
+        let offering = identity();
+        let typist = identity();
+
         let mut state = PairingState::default();
-        state.begin(&identity, "a".into(), addr()).unwrap();
+        let (code, _) = state.begin(&offering, "offering".into(), addr()).unwrap();
+
+        let mut wrong = code.digits();
+        wrong[5] = (wrong[5] + 1) % 10;
+        let wrong = PairingCode::parse(&wrong.map(|d| d.to_string()).join("")).unwrap();
+
+        assert!(matches!(
+            run_ceremony(&mut state, wrong, &typist),
+            Err(PairingError::NotFound)
+        ));
+        assert!(
+            matches!(state, PairingState::Offering { .. }),
+            "one typo must not end the ceremony"
+        );
+    }
+
+    /// The bound that keeps six digits meaningful: an attacker on the network
+    /// gets a handful of guesses, not a million.
+    #[test]
+    fn repeated_wrong_codes_retire_the_offer() {
+        let offering = identity();
+        let mut state = PairingState::default();
+        state.begin(&offering, "offering".into(), addr()).unwrap();
+
+        for _ in 0..MAX_LOOKUP_ATTEMPTS {
+            assert!(matches!(state.lookup(&[7u8; 16]), LookupOutcome::Refuse));
+        }
+        assert!(
+            !matches!(state, PairingState::Offering { .. }),
+            "an offer being guessed at must stop answering"
+        );
+    }
+
+    #[test]
+    fn a_cancelled_offer_trusts_nobody() {
+        let offering = identity();
+        let typist = identity();
+        let mut state = PairingState::default();
+        let (code, _) = state.begin(&offering, "offering".into(), addr()).unwrap();
         state.cancel();
 
         assert!(matches!(state, PairingState::Idle));
-        assert!(matches!(state.confirm(), Err(PairingError::NotInProgress)));
+        assert!(matches!(
+            run_ceremony(&mut state, code, &typist),
+            Err(PairingError::NotFound)
+        ));
     }
 
     #[test]
-    fn confirming_without_a_ceremony_cannot_trust_anything() {
-        let mut state = PairingState::default();
-        assert!(matches!(state.confirm(), Err(PairingError::NotInProgress)));
-    }
-
-    #[test]
-    fn an_abandoned_offer_stops_accepting_answers() {
+    fn an_abandoned_offer_stops_answering() {
         let identity = identity();
         let mut state = PairingState::default();
         state.begin(&identity, "a".into(), addr()).unwrap();
@@ -344,10 +405,7 @@ mod tests {
         }
 
         assert!(state.expire_if_stale(), "a stale offer must be dropped");
-        assert!(!state.is_offering());
-        assert!(matches!(
-            state.accept_answer(b"late"),
-            Err(PairingError::NotInProgress)
-        ));
+        assert!(!matches!(state, PairingState::Offering { .. }));
+        assert!(matches!(state.lookup(&[0u8; 16]), LookupOutcome::Refuse));
     }
 }

@@ -38,8 +38,10 @@ test("Next walks forward through every screen and ends on the history", async ({
   await expect(page.getByRole("heading", { name: "One shortcut. Anywhere." })).toBeVisible();
 
   // The last step advertises the real hotkey, humanised — not the stored
-  // `CmdOrCtrl+…` accelerator.
-  await expect(page.getByText("Ctrl + Shift + V")).toBeVisible();
+  // `CmdOrCtrl+…` accelerator. Which humanisation is right depends on the
+  // platform the webview is running on: macOS writes chords solid.
+  const chord = process.platform === "darwin" ? "⌘⇧V" : "Ctrl + Shift + V";
+  await expect(page.getByText(chord)).toBeVisible();
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("option")).toHaveCount(FIXTURE_CLIPS.length);

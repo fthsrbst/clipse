@@ -91,7 +91,14 @@ async fn store_capture(
     .await??;
 
     match outcome {
-        InsertOutcome::Inserted(_) => daemon.emit(Event::ClipAdded(Box::new(clip))),
+        InsertOutcome::Inserted(_) => {
+            daemon.emit(Event::ClipAdded(Box::new(clip)));
+            // The other half of "copy here, paste there": the peers are told
+            // now, not at the next tick of the dial loop. This one line is the
+            // difference between sync that feels instant and sync that feels
+            // broken.
+            daemon.sync_soon();
+        }
         InsertOutcome::Deduplicated(id) => {
             // The existing row moved to the top of the history, so the UI has
             // to re-render it — but with the row it already knows, not the

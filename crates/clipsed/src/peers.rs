@@ -1,9 +1,20 @@
 //! Keeping sessions with the paired devices alive.
 //!
 //! Two loops. One accepts whatever arrives on the QUIC endpoint; the other
-//! walks the paired set on a timer and dials anyone it has not spoken to
-//! recently. Both end up in the same place — `sync::run_session` — differing
-//! only in which side of the alternation they take.
+//! syncs when there is a reason to — a local copy, a peer just seen — and
+//! falls back to a slow timer when there is not. Both end up in the same
+//! place — `sync::run_session` — differing only in which side of the
+//! alternation they take.
+//!
+//! # Why the dial loop is not a poll loop
+//!
+//! It used to be one: a 30-second tick, and nothing else. That made the
+//! product's central promise — copy here, paste there — take up to half a
+//! minute, which reads as "sync is broken" no matter how fast the session
+//! itself runs. The tick is still here as a floor for peers that appear
+//! without announcing themselves, but the normal path is [`PeerManager::nudge`]
+//! from the capture path: a clip lands in the store and the sync starts in the
+//! same millisecond.
 //!
 //! Failures are not all equal. A peer that cannot be *reached* is ordinary and
 //! gets exponential backoff; a peer that *refuses* us has either been removed
@@ -19,17 +30,30 @@ use std::time::Duration;
 
 use clipse_core::DeviceId;
 use clipse_crypto::{CandidateAddress, Trust};
+use clipse_ipc::protocol::{Connectivity, PeerInfo};
 use clipse_net::candidate::{Candidate, CandidateList};
-use clipse_net::{Backoff, Discovery, DiscoveryEvent, Inbound, QuicTransport};
-use tokio::sync::watch;
+use clipse_net::{
+    Backoff, Discovery, DiscoveryEvent, Inbound, PairingCall, QuicTransport, Reachability,
+};
+use tokio::sync::{Notify, watch};
 use tracing::{debug, info, warn};
 
 use crate::sync::{self, Role, SyncContext};
 
-/// How often the dial loop wakes up. Sync is also triggered by a local capture
-/// (see `capture::run`), so this is the floor on how stale a peer can get, not
-/// the normal path.
+/// How often the dial loop wakes up when nothing has happened. A floor on how
+/// stale a peer can get — the normal path is [`PeerManager::nudge`], which
+/// fires the moment something is copied.
 const DIAL_TICK: Duration = Duration::from_secs(30);
+
+/// How long after the last successful session a peer still counts as online.
+/// Comfortably more than [`DIAL_TICK`] so an idle-but-reachable peer does not
+/// flicker offline between two ticks.
+const ONLINE_WINDOW_MS: u64 = 90_000;
+
+/// How long the whole inbound pairing ceremony may take. Three round trips on
+/// a LAN is milliseconds; this only exists so a connection that opens, sends a
+/// lookup and then goes quiet cannot occupy the pairing state forever.
+const PAIRING_CEREMONY_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Per-peer state the loops share.
 struct PeerState {
@@ -37,6 +61,10 @@ struct PeerState {
     backoff: Backoff,
     /// Set when the peer refused us. Cleared when the paired set changes.
     refused: Option<String>,
+    /// When a session with this peer last completed, and over what. Drives the
+    /// devices list; `None` means "not since this daemon started".
+    last_seen_ms: Option<u64>,
+    last_reachability: Option<Reachability>,
 }
 
 impl PeerState {
@@ -45,6 +73,8 @@ impl PeerState {
             candidates,
             backoff: Backoff::default(),
             refused: None,
+            last_seen_ms: None,
+            last_reachability: None,
         }
     }
 }
@@ -64,10 +94,23 @@ pub struct PeerManager {
     pairing: Arc<tokio::sync::Mutex<crate::pairing::PairingState>>,
     events: Option<tokio::sync::broadcast::Sender<clipse_ipc::Event>>,
     /// Weak on purpose: the daemon owns this manager, so an `Arc` back would
-    /// be a cycle that never drops. Used for the one thing a session cannot
+    /// be a cycle that never drops. Used for the two things a session cannot
     /// decide for itself — whether an arriving clip belongs on this machine's
-    /// clipboard.
+    /// clipboard, and whether a completed ceremony may add a device to the
+    /// trust set on disk.
     daemon: std::sync::Weak<crate::daemon::Daemon>,
+    /// Raised whenever there is a new reason to sync. One permit is kept when
+    /// nobody is waiting, so a copy that lands mid-session still causes one
+    /// more pass rather than being lost.
+    nudge: Notify,
+    /// Passes over the peer set since startup. Only read by the tests, which
+    /// is the only way to state "a copy caused a sync now, not in 30 seconds"
+    /// as something a machine checks.
+    passes: std::sync::atomic::AtomicU64,
+    /// Held for the length of one pass over the peers, so a burst of copies
+    /// queues one follow-up pass instead of starting several overlapping ones
+    /// against the same device.
+    pass: tokio::sync::Mutex<()>,
 }
 
 impl PeerManager {
@@ -87,9 +130,19 @@ impl PeerManager {
             )),
             events: None,
             daemon: std::sync::Weak::new(),
+            nudge: Notify::new(),
+            passes: std::sync::atomic::AtomicU64::new(0),
+            pass: tokio::sync::Mutex::new(()),
         });
         manager.reload_from_trust();
         manager
+    }
+
+    /// Something worth sending happened. Wakes the dial loop now instead of at
+    /// the next tick — this is what makes a copy on one machine show up on the
+    /// other in milliseconds rather than in up to half a minute.
+    pub fn nudge(&self) {
+        self.nudge.notify_one();
     }
 
     /// Share the pairing state machine and the event channel with the daemon,
@@ -251,7 +304,8 @@ impl PeerManager {
                         match sync::run_session(&mut link, &this.ctx, Role::Responder).await {
                             Ok(outcome) => {
                                 info!(peer = %peer.short(), ?outcome, "served a sync session");
-                                this.note_success(peer, link.info().addr);
+                                let info = link.info();
+                                this.note_success(peer, info.addr, info.reachability);
                                 this.settle(&outcome).await;
                             }
                             Err(e) => {
@@ -262,57 +316,32 @@ impl PeerManager {
                     });
                 }
                 Ok(Inbound::Pairing(exchange)) => {
-                    // Only accepted while the user has the pairing screen open.
-                    // Refusing silently is deliberate: a stranger probing for a
-                    // window learns nothing from the difference between "no
-                    // window" and "wrong answer".
-                    let outcome = {
-                        let mut pairing = self.pairing.lock().await;
-                        pairing.expire_if_stale();
-                        if pairing.is_offering() {
-                            Some(pairing.accept_answer(exchange.accept_bytes()))
-                        } else {
-                            None
-                        }
-                    };
-
-                    match outcome {
-                        Some(Ok(confirm)) => {
-                            let digits = self.pairing.lock().await.digits();
-                            if let Err(e) = exchange.confirm(&confirm).await {
-                                warn!(error = %e, "could not send the pairing confirmation");
-                                self.pairing.lock().await.cancel();
-                            } else if let Some((digits, peer_label)) = digits {
-                                // Both screens now show a code. Nothing is
-                                // trusted until the user says they match.
-                                self.emit(clipse_ipc::Event::PairingCode { digits, peer_label });
-                            }
-                        }
-                        Some(Err(e)) => {
-                            debug!(error = %e, "a pairing attempt was refused");
-                            exchange.reject();
-                            self.emit(clipse_ipc::Event::PairingEnded {
-                                reason: e.to_string(),
-                            });
-                        }
-                        None => {
-                            debug!(addr = %exchange.remote_addr(), "no pairing window is open");
-                            exchange.reject();
-                        }
-                    }
+                    let this = Arc::clone(&self);
+                    tokio::spawn(async move { this.serve_pairing(exchange).await });
                 }
                 Err(e) => debug!(error = %e, "inbound connection ended"),
             }
         }
     }
 
-    /// Dial peers that are due, forever.
+    /// Sync when there is a reason to, forever.
+    ///
+    /// The first pass runs immediately rather than after a tick: a daemon that
+    /// has just started is exactly the case where the history is most likely to
+    /// be behind, and waiting 30 seconds to find that out is the old bug in
+    /// miniature.
     pub async fn dial_loop(self: Arc<Self>, mut shutdown: watch::Receiver<bool>) {
+        self.refresh_from_discovery().await;
+        self.sync_all().await;
+
         loop {
             tokio::select! {
                 _ = shutdown.changed() => {
                     if *shutdown.borrow() { return; }
                 }
+                // A local capture, a pairing, a peer coming back: sync now, and
+                // do not spend 1.5 seconds browsing mDNS first.
+                _ = self.nudge.notified() => self.sync_all().await,
                 _ = tokio::time::sleep(DIAL_TICK) => {
                     self.refresh_from_discovery().await;
                     self.sync_all().await;
@@ -322,7 +351,14 @@ impl PeerManager {
     }
 
     /// One pass over every paired device.
+    ///
+    /// Serialised against other passes: two overlapping passes would dial the
+    /// same peer twice, and the second would find nothing to send anyway.
     pub async fn sync_all(&self) {
+        let _pass = self.pass.lock().await;
+        self.passes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let due: Vec<DeviceId> = {
             let peers = self.peers.lock().expect(POISONED);
             peers
@@ -352,7 +388,10 @@ impl PeerManager {
 
         match self.transport.dial(peer, &candidates).await {
             Ok(mut link) => {
-                let addr = link.info().addr;
+                let (addr, reachability) = {
+                    let info = link.info();
+                    (info.addr, info.reachability)
+                };
                 let result = sync::run_session(&mut link, &self.ctx, Role::Dialler).await;
                 // Gracefully, because the dialler's last act is a send: see
                 // `PeerLink::close_gracefully`.
@@ -361,7 +400,7 @@ impl PeerManager {
                 match result {
                     Ok(outcome) => {
                         info!(peer = %peer.short(), ?outcome, "synced");
-                        self.note_success(peer, addr);
+                        self.note_success(peer, addr, reachability);
                         self.settle(&outcome).await;
                         Ok(())
                     }
@@ -405,26 +444,190 @@ impl PeerManager {
         }
     }
 
-    /// Carry a `PairingAccept` to the address from a scanned QR code.
-    pub async fn send_pairing_accept(
+    /// Serve the offering half of one pairing ceremony.
+    ///
+    /// Every failure ends the same way — the connection is dropped without a
+    /// reason — because the difference between "no window is open", "that is
+    /// not the code on my screen" and "your proof did not verify" is exactly
+    /// what someone guessing would like to know.
+    async fn serve_pairing(self: Arc<Self>, mut exchange: clipse_net::PairingExchange) {
+        let addr = exchange.remote_addr();
+        match tokio::time::timeout(
+            PAIRING_CEREMONY_TIMEOUT,
+            self.pairing_ceremony(&mut exchange),
+        )
+        .await
+        {
+            Ok(Ok(())) => exchange.finish().await,
+            Ok(Err(reason)) => {
+                debug!(%addr, %reason, "an inbound pairing attempt ended");
+                exchange.reject();
+            }
+            Err(_) => {
+                debug!(%addr, "an inbound pairing attempt stalled");
+                self.pairing.lock().await.cancel();
+                exchange.reject();
+            }
+        }
+    }
+
+    async fn pairing_ceremony(
         &self,
-        addr: SocketAddr,
-        accept: &[u8],
-    ) -> Result<Vec<u8>, String> {
+        exchange: &mut clipse_net::PairingExchange,
+    ) -> Result<(), String> {
+        use crate::pairing::LookupOutcome;
+        use clipse_crypto::PairingWire;
+
+        // 1. Is this code ours?
+        let PairingWire::Lookup { tag } =
+            PairingWire::from_bytes(exchange.first()).map_err(|e| e.to_string())?
+        else {
+            return Err("a pairing connection opened with the wrong message".into());
+        };
+
+        let offer = match self.pairing.lock().await.lookup(&tag) {
+            LookupOutcome::Offer(offer) => offer,
+            LookupOutcome::Refuse => {
+                // Answered rather than dropped: the device doing the typing is
+                // walking every Clipse on the network, and a clean "not me"
+                // lets it move on to the next one immediately.
+                let _ = exchange.reply(&PairingWire::Refused.to_bytes()).await;
+                return Ok(());
+            }
+        };
+        exchange
+            .reply(&PairingWire::Offer(offer).to_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 2. Their identity and nonce; our proof back.
+        let PairingWire::Accept(accept) =
+            PairingWire::from_bytes(&exchange.next().await.map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?
+        else {
+            return Err("expected a pairing accept".into());
+        };
+        let confirm = self
+            .pairing
+            .lock()
+            .await
+            .answer_accept(&accept)
+            .map_err(|e| e.to_string())?;
+        exchange
+            .reply(&PairingWire::Confirm(Box::new(confirm)).to_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 3. Their proof. Until this verifies, nobody has been trusted.
+        let PairingWire::Finish(finish) =
+            PairingWire::from_bytes(&exchange.next().await.map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?
+        else {
+            return Err("expected a pairing proof".into());
+        };
+        let peer = self
+            .pairing
+            .lock()
+            .await
+            .finish(&finish)
+            .map_err(|e| e.to_string())?;
+
+        let label = peer.label.clone();
+        let daemon = self
+            .daemon
+            .upgrade()
+            .ok_or_else(|| "the daemon is shutting down".to_string())?;
+        daemon.commit_pairing(peer)?;
+
+        exchange
+            .reply(&PairingWire::Done.to_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+        info!(peer = %label, "paired");
+        self.emit(clipse_ipc::Event::PairingSucceeded { peer_label: label });
+        // A brand new peer has a whole history to exchange; there is no reason
+        // to make the user wait for the next tick to see it.
+        self.nudge();
+        Ok(())
+    }
+
+    /// Every address worth asking "are you showing this code?".
+    ///
+    /// mDNS finds devices on the LAN; the tailnet is walked separately because
+    /// it carries no multicast, so a tailnet peer is only reachable at
+    /// [`clipse_net::DEFAULT_SYNC_PORT`] — which is exactly why the endpoint
+    /// tries to bind that port rather than an ephemeral one.
+    pub async fn pairing_targets(&self) -> Vec<SocketAddr> {
+        let mut targets: Vec<SocketAddr> = Vec::new();
+
+        if let Some(discovery) = self.discovery.clone() {
+            let found = tokio::task::spawn_blocking(move || {
+                discovery
+                    .lock()
+                    .expect(POISONED)
+                    .sweep(Duration::from_millis(1_200))
+            })
+            .await;
+            if let Ok(Ok(events)) = found {
+                for event in events {
+                    if let DiscoveryEvent::Found(peer) = event {
+                        targets.extend(peer.addresses);
+                    }
+                }
+            }
+        }
+
+        let tailnet = tokio::task::spawn_blocking(clipse_net::TailnetStatus::query).await;
+        if let Ok(Ok(status)) = tailnet
+            && status.is_running()
+        {
+            for peer in status.peers.iter().filter(|peer| peer.online) {
+                if let Some(ip) = peer.preferred_ip() {
+                    targets.push(SocketAddr::new(ip, clipse_net::DEFAULT_SYNC_PORT));
+                }
+            }
+        }
+
+        // A device that is already paired can be re-paired (a reinstall on the
+        // other side), and its recorded address is worth trying even when
+        // nothing announced it.
+        {
+            let peers = self.peers.lock().expect(POISONED);
+            for state in peers.values() {
+                targets.extend(state.candidates.iter().map(|candidate| candidate.addr));
+            }
+        }
+
+        targets.sort();
+        targets.dedup();
+        targets
+    }
+
+    /// Open the typing half of a pairing ceremony against one address.
+    pub async fn pairing_call(&self, addr: SocketAddr) -> Result<PairingCall, String> {
         self.transport
-            .send_pairing_accept(addr, accept)
+            .pairing_call(addr)
             .await
             .map_err(|e| e.to_string())
     }
 
-    fn note_success(&self, peer: DeviceId, addr: SocketAddr) {
-        let mut peers = self.peers.lock().expect(POISONED);
-        if let Some(state) = peers.get_mut(&peer) {
-            state.backoff.reset();
-            state.refused = None;
-            state
-                .candidates
-                .upsert(Candidate::lan(addr).seen_at(now_ms()));
+    fn note_success(&self, peer: DeviceId, addr: SocketAddr, reachability: Reachability) {
+        {
+            let mut peers = self.peers.lock().expect(POISONED);
+            if let Some(state) = peers.get_mut(&peer) {
+                state.backoff.reset();
+                state.refused = None;
+                state.last_seen_ms = Some(now_ms());
+                state.last_reachability = Some(reachability);
+                state
+                    .candidates
+                    .upsert(Candidate::lan(addr).seen_at(now_ms()));
+            }
+        }
+        // The tray and the devices list show "last seen"; without this they
+        // would keep showing whatever was true when the window opened.
+        if let Some(info) = self.peer_info(&peer) {
+            self.emit(clipse_ipc::Event::DeviceChanged(info));
         }
     }
 
@@ -434,6 +637,40 @@ impl PeerManager {
         let total = peers.len() as u32;
         let healthy = peers.values().filter(|s| s.refused.is_none()).count() as u32;
         (healthy, total)
+    }
+
+    /// The paired devices, as the UI shows them.
+    ///
+    /// Built from the trust set (which owns the label, the platform and the
+    /// fact of pairing) joined with the live peer table (which owns whether
+    /// anyone has answered lately). Answering this from the trust set alone
+    /// would list devices with no idea whether they are reachable, which is the
+    /// only thing a user actually wants from this list.
+    pub fn peer_infos(&self) -> Vec<PeerInfo> {
+        let paired: Vec<clipse_crypto::PairedDevice> = {
+            let trust = self.trust.read().expect(POISONED);
+            trust.peers().cloned().collect()
+        };
+        let peers = self.peers.lock().expect(POISONED);
+        paired
+            .into_iter()
+            .map(|peer| info_for(&peer, peers.get(&peer.device_id)))
+            .collect()
+    }
+
+    fn peer_info(&self, device: &DeviceId) -> Option<PeerInfo> {
+        let paired = {
+            let trust = self.trust.read().expect(POISONED);
+            trust.peers().find(|p| &p.device_id == device).cloned()?
+        };
+        let peers = self.peers.lock().expect(POISONED);
+        Some(info_for(&paired, peers.get(device)))
+    }
+
+    /// How many passes over the peer set have run. Test-only: see `passes`.
+    #[cfg(test)]
+    fn passes(&self) -> u64 {
+        self.passes.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Why a peer is not being dialled, if it is not. Read by the tests and by
@@ -449,6 +686,39 @@ impl PeerManager {
 }
 
 const POISONED: &str = "peer table poisoned by an earlier panic";
+
+/// One paired device as the UI sees it.
+///
+/// "Online" is deliberately "a session completed recently" rather than "an
+/// address is known": an address that has not answered since the laptop went
+/// to sleep is not connectivity, and claiming otherwise is the kind of lie a
+/// sync product does not recover from.
+fn info_for(peer: &clipse_crypto::PairedDevice, state: Option<&PeerState>) -> PeerInfo {
+    let last_seen_ms = state.and_then(|s| s.last_seen_ms);
+    let fresh = last_seen_ms.is_some_and(|seen| now_ms().saturating_sub(seen) < ONLINE_WINDOW_MS);
+    let connectivity = match (fresh, state.and_then(|s| s.last_reachability)) {
+        (true, Some(Reachability::Tailnet)) => Connectivity::Tailnet,
+        (true, _) => Connectivity::Lan,
+        (false, _) => Connectivity::Offline,
+    };
+
+    PeerInfo {
+        device: peer.device_id,
+        label: peer.label.clone(),
+        platform: platform_label(&peer.platform).to_string(),
+        connectivity,
+        last_seen_ms,
+    }
+}
+
+fn platform_label(platform: &clipse_crypto::Platform) -> &str {
+    match platform {
+        clipse_crypto::Platform::Windows => "windows",
+        clipse_crypto::Platform::MacOs => "macos",
+        clipse_crypto::Platform::Linux => "linux",
+        clipse_crypto::Platform::Other(other) => other,
+    }
+}
 
 fn candidates_of(addresses: &[CandidateAddress]) -> CandidateList {
     CandidateList::new(addresses.iter().map(|address| match address {
@@ -613,5 +883,43 @@ mod tests {
             "asleep laptops must keep being tried"
         );
         assert!(!DialError::NotPaired.is_retryable());
+    }
+
+    /// The regression that made the product feel broken: sync only ever ran on
+    /// a 30-second tick, so a copy took up to half a minute to appear on the
+    /// other machine. A nudge has to start a pass now.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_nudge_starts_a_pass_instead_of_waiting_for_the_tick() {
+        // No peers on purpose: what is under test is how quickly the loop
+        // starts a pass, not how long dialling a dead address takes.
+        let manager = manager_with(vec![]);
+        let (shutdown, rx) = watch::channel(false);
+
+        let looping = tokio::spawn(Arc::clone(&manager).dial_loop(rx));
+        wait_until(&manager, 1)
+            .await
+            .expect("a daemon syncs on startup");
+
+        manager.nudge();
+        let woke = wait_until(&manager, 2).await;
+
+        let _ = shutdown.send(true);
+        looping.abort();
+        assert!(
+            woke.is_some(),
+            "a nudge did not wake the loop; the tick is {DIAL_TICK:?} away"
+        );
+    }
+
+    /// Poll for a pass count, well inside `DIAL_TICK` so a pass that only the
+    /// timer could have caused cannot make this pass.
+    async fn wait_until(manager: &Arc<PeerManager>, passes: u64) -> Option<()> {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while manager.passes() < passes {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .ok()
     }
 }
