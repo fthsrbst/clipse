@@ -39,9 +39,11 @@ test("Next walks forward through every screen and ends on the history", async ({
 
   // The last step advertises the real hotkey, humanised — not the stored
   // `CmdOrCtrl+…` accelerator. Which humanisation is right depends on the
-  // platform the webview is running on: macOS writes chords solid.
-  const chord = process.platform === "darwin" ? "⌘⇧V" : "Ctrl + Shift + V";
-  await expect(page.getByText(chord)).toBeVisible();
+  // platform: macOS writes chords solid. Asked of the page rather than of the
+  // test runner, because `navigator.platform` is the same signal the component
+  // itself branches on.
+  const mac = await page.evaluate(() => /mac/i.test(navigator.platform));
+  await expect(page.getByText(mac ? "⌘⇧V" : "Ctrl + Shift + V")).toBeVisible();
 
   await page.getByRole("button", { name: "Start" }).click();
   await expect(page.getByRole("option")).toHaveCount(FIXTURE_CLIPS.length);
