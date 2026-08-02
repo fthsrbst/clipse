@@ -59,6 +59,11 @@ pub struct SyncContext {
     pub loop_guard: Arc<Mutex<LoopGuard>>,
     pub label: String,
     pub platform: String,
+    /// Where a clip that arrived from a peer is announced to the UIs. A clip
+    /// merged straight into the store is invisible until something re-queries,
+    /// which for a user watching the history window is indistinguishable from
+    /// sync not working at all. `None` in the tests here, which have no UI.
+    pub events: Option<tokio::sync::broadcast::Sender<clipse_ipc::Event>>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -69,6 +74,10 @@ pub struct SyncOutcome {
     pub blobs_sent: usize,
     pub blobs_received: usize,
     pub blobs_rejected: usize,
+    /// The newest clip this session took in, if any. The caller decides what
+    /// to do with it; the protocol has no opinion. Only *new content* counts —
+    /// a pin or a tombstone arriving is not something to put on a clipboard.
+    pub newest_received: Option<clipse_core::ClipId>,
 }
 
 /// Exchange histories with one peer, then return.
@@ -311,6 +320,9 @@ async fn take_their_history(
     link.send(&SyncMessage::Want { hashes: wanted }).await?;
 
     let mut missing_blobs: Vec<ContentHash> = Vec::new();
+    // Which of the inserts was newest by HLC, not by arrival order — a summary
+    // is walked in whatever order the store returned it.
+    let mut newest: Option<(Hlc, clipse_core::ClipId)> = None;
     for _ in 0..expected {
         match link.recv().await? {
             SyncMessage::Push { clip } => {
@@ -320,11 +332,20 @@ async fn take_their_history(
                     .filter(|p| p.is_blob())
                     .map(|p| p.digest)
                     .collect();
-                if apply(ctx, peer, *clip).await? {
-                    outcome.received += 1;
-                    missing_blobs.extend(blob_digests);
-                } else {
-                    outcome.rejected += 1;
+                let hlc = clip.hlc;
+                match apply(ctx, peer, *clip).await? {
+                    Applied::Inserted(id) => {
+                        outcome.received += 1;
+                        missing_blobs.extend(blob_digests);
+                        if newest.is_none_or(|(seen, _)| hlc > seen) {
+                            newest = Some((hlc, id));
+                        }
+                    }
+                    Applied::Updated => {
+                        outcome.received += 1;
+                        missing_blobs.extend(blob_digests);
+                    }
+                    Applied::Refused => outcome.rejected += 1,
                 }
             }
             other => {
@@ -367,6 +388,10 @@ async fn take_their_history(
         outcome.blobs_received += 1;
     }
 
+    // Reported only now, after the blob transfers: a clip whose payload is
+    // still missing is not something to hand to a clipboard.
+    outcome.newest_received = newest.map(|(_, id)| id);
+
     let store = Arc::clone(&ctx.store);
     let max_hlc = tokio::task::spawn_blocking(move || store.max_hlc()).await??;
     link.send(&SyncMessage::Ack {
@@ -377,8 +402,17 @@ async fn take_their_history(
     Ok(())
 }
 
-/// Merge one incoming clip. Returns false when it was refused.
-async fn apply(ctx: &SyncContext, peer: DeviceId, clip: Clip) -> Result<bool, SyncError> {
+/// What merging one incoming clip did.
+enum Applied {
+    /// Content this device had never seen.
+    Inserted(clipse_core::ClipId),
+    /// A pin or a tombstone landing on a clip already held.
+    Updated,
+    Refused,
+}
+
+/// Merge one incoming clip, and tell the UIs about it.
+async fn apply(ctx: &SyncContext, peer: DeviceId, clip: Clip) -> Result<Applied, SyncError> {
     let store = Arc::clone(&ctx.store);
     let hash = clip.hash;
     let local =
@@ -387,16 +421,19 @@ async fn apply(ctx: &SyncContext, peer: DeviceId, clip: Clip) -> Result<bool, Sy
     let action = merge(local.as_ref(), &clip);
     let hlc = clip.hlc;
 
-    match action {
+    let applied = match action {
         MergeAction::Reject => {
             warn!(peer = %peer.short(), "refused a clip that does not hash to its payloads");
-            return Ok(false);
+            return Ok(Applied::Refused);
         }
-        MergeAction::Ignore => return Ok(false),
+        MergeAction::Ignore => return Ok(Applied::Refused),
         MergeAction::Insert => {
             let store = Arc::clone(&ctx.store);
             let to_insert = clip.clone();
             tokio::task::spawn_blocking(move || store.insert(&to_insert)).await??;
+            let id = clip.id;
+            emit(ctx, clipse_ipc::Event::ClipAdded(Box::new(clip)));
+            Applied::Inserted(id)
         }
         MergeAction::UpdateMetadata { pinned, deleted } => {
             let existing = local.expect("UpdateMetadata implies a local clip");
@@ -416,8 +453,22 @@ async fn apply(ctx: &SyncContext, peer: DeviceId, clip: Clip) -> Result<bool, Sy
             if !deleted && existing.deleted {
                 warn!("peer un-deleted a clip; the store cannot revive a tombstone");
             }
+
+            if deleted {
+                emit(ctx, clipse_ipc::Event::ClipRemoved(id));
+            } else {
+                // Re-read rather than patching the local copy: the store owns
+                // what a row now says, and a stale one would be published.
+                let store = Arc::clone(&ctx.store);
+                if let Ok(Some(updated)) =
+                    tokio::task::spawn_blocking(move || store.get(id)).await?
+                {
+                    emit(ctx, clipse_ipc::Event::ClipUpdated(Box::new(updated)));
+                }
+            }
+            Applied::Updated
         }
-    }
+    };
 
     // Recorded *after* a successful merge and before the clipboard is written,
     // so the watcher's echo of that write is suppressed rather than
@@ -427,7 +478,15 @@ async fn apply(ctx: &SyncContext, peer: DeviceId, clip: Clip) -> Result<bool, Sy
         .expect("loop guard poisoned")
         .record_received(hash, hlc.device);
 
-    Ok(true)
+    Ok(applied)
+}
+
+/// Publish to whoever is subscribed. A daemon with no UI attached is the
+/// normal case, not an error.
+fn emit(ctx: &SyncContext, event: clipse_ipc::Event) {
+    if let Some(events) = &ctx.events {
+        let _ = events.send(event);
+    }
 }
 
 fn variant_name(message: &SyncMessage) -> &'static str {
@@ -467,6 +526,7 @@ mod tests {
         identity: Arc<DeviceIdentity>,
         trust: Arc<RwLock<Trust>>,
         transport: Arc<QuicTransport>,
+        events: tokio::sync::broadcast::Sender<clipse_ipc::Event>,
     }
 
     impl TestDaemon {
@@ -487,6 +547,8 @@ mod tests {
                 .unwrap(),
             );
 
+            let (events, _) = tokio::sync::broadcast::channel(256);
+
             Self {
                 _dir: dir,
                 ctx: SyncContext {
@@ -495,10 +557,12 @@ mod tests {
                     loop_guard: Arc::new(Mutex::new(LoopGuard::default())),
                     label: label.to_string(),
                     platform: "test".to_string(),
+                    events: Some(events.clone()),
                 },
                 identity,
                 trust,
                 transport,
+                events,
             }
         }
 
@@ -599,7 +663,7 @@ mod tests {
             run_session(&mut responder_link, &b.ctx, Role::Responder),
         );
 
-        dialler_link.close("done");
+        dialler_link.close_gracefully("done").await;
         responder_link.close("done");
         (
             dialler_out.expect("dialler"),
@@ -629,6 +693,75 @@ mod tests {
         let received = &bob.history()[0];
         assert_eq!(received.source.device_label, "alice");
         assert_eq!(received.hlc.device, alice.id());
+    }
+
+    /// The whole product, from a user's seat: a clip that arrives from another
+    /// device has to be *announced*, not just stored. Merging it straight into
+    /// the store leaves the history window showing yesterday's list, which
+    /// reads as "sync is broken" however well the protocol ran.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_clip_that_arrives_from_a_peer_is_announced_to_the_uis() {
+        let alice = TestDaemon::new("alice");
+        let bob = TestDaemon::new("bob");
+        pair(&alice, &bob);
+
+        // Subscribed before the session, the way a running UI would be.
+        let mut watching = bob.events.subscribe();
+        alice.capture("something worth showing");
+
+        let (_, into_bob) = sync(&alice, &bob).await;
+        assert_eq!(into_bob.received, 1);
+
+        match watching.try_recv() {
+            Ok(clipse_ipc::Event::ClipAdded(clip)) => {
+                assert_eq!(clip.text(), Some("something worth showing"));
+            }
+            other => panic!("bob's UI was told nothing about the clip: {other:?}"),
+        }
+    }
+
+    /// And it is the newest one that gets offered to the clipboard — a device
+    /// catching up after a day away must not replay a whole history through
+    /// it, and must not land on whichever clip the summary happened to end on.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn only_the_newest_arrival_is_offered_to_the_clipboard() {
+        let alice = TestDaemon::new("alice");
+        let bob = TestDaemon::new("bob");
+        pair(&alice, &bob);
+
+        alice.capture("first");
+        alice.capture("second");
+        let last = alice.capture("newest of the three");
+
+        let (_, into_bob) = sync(&alice, &bob).await;
+        assert_eq!(into_bob.received, 3);
+        assert_eq!(
+            into_bob.newest_received,
+            Some(last.id),
+            "the clipboard would have been handed the wrong clip"
+        );
+    }
+
+    /// A pin or a tombstone is metadata, not content: there is nothing to put
+    /// on a clipboard, and doing so would resurrect a deleted clip there.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_deletion_arriving_is_not_offered_to_the_clipboard() {
+        let alice = TestDaemon::new("alice");
+        let bob = TestDaemon::new("bob");
+        pair(&alice, &bob);
+
+        let clip = alice.capture("delete me");
+        sync(&alice, &bob).await;
+
+        alice
+            .ctx
+            .store
+            .delete(clip.id, alice.ctx.clock.now())
+            .unwrap();
+        let (_, into_bob) = sync(&alice, &bob).await;
+
+        assert_eq!(into_bob.received, 1, "the tombstone should have replicated");
+        assert_eq!(into_bob.newest_received, None);
     }
 
     #[tokio::test(flavor = "multi_thread")]

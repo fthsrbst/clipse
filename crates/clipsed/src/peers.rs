@@ -63,6 +63,11 @@ pub struct PeerManager {
     /// machine and not two.
     pairing: Arc<tokio::sync::Mutex<crate::pairing::PairingState>>,
     events: Option<tokio::sync::broadcast::Sender<clipse_ipc::Event>>,
+    /// Weak on purpose: the daemon owns this manager, so an `Arc` back would
+    /// be a cycle that never drops. Used for the one thing a session cannot
+    /// decide for itself — whether an arriving clip belongs on this machine's
+    /// clipboard.
+    daemon: std::sync::Weak<crate::daemon::Daemon>,
 }
 
 impl PeerManager {
@@ -81,6 +86,7 @@ impl PeerManager {
                 crate::pairing::PairingState::default(),
             )),
             events: None,
+            daemon: std::sync::Weak::new(),
         });
         manager.reload_from_trust();
         manager
@@ -98,6 +104,27 @@ impl PeerManager {
             manager.events = Some(events);
         }
         self
+    }
+
+    /// Let finished sessions reach the daemon, which is what decides whether
+    /// an arriving clip goes on the clipboard.
+    pub fn with_daemon(
+        mut self: Arc<Self>,
+        daemon: std::sync::Weak<crate::daemon::Daemon>,
+    ) -> Arc<Self> {
+        if let Some(manager) = Arc::get_mut(&mut self) {
+            manager.daemon = daemon;
+        }
+        self
+    }
+
+    /// The one thing that happens after a session either side of the dial.
+    async fn settle(&self, outcome: &sync::SyncOutcome) {
+        if let Some(id) = outcome.newest_received
+            && let Some(daemon) = self.daemon.upgrade()
+        {
+            daemon.apply_incoming(id).await;
+        }
     }
 
     /// Start announcing this device and browsing for the others.
@@ -154,10 +181,13 @@ impl PeerManager {
                     }
                 }
                 DiscoveryEvent::Lost(device) => {
-                    if let Some(state) = peers.get_mut(&device) {
-                        // Keep the tailnet route; only the LAN sighting is gone.
-                        state.candidates.refresh_lan([], now);
-                    }
+                    // Nothing to do to the candidates. A peer that went away
+                    // is unreachable at that address whether or not we keep
+                    // it, the dial fails fast and stays retryable, and the
+                    // entry sinks in `dial_order` on its own as others are
+                    // seen. Deleting it is how a peer that mDNS stops
+                    // re-reporting becomes permanently unreachable.
+                    debug!(device = %device.short(), "peer left the network");
                 }
                 DiscoveryEvent::Incompatible { instance, reason } => {
                     warn!(
@@ -222,6 +252,7 @@ impl PeerManager {
                             Ok(outcome) => {
                                 info!(peer = %peer.short(), ?outcome, "served a sync session");
                                 this.note_success(peer, link.info().addr);
+                                this.settle(&outcome).await;
                             }
                             Err(e) => {
                                 warn!(peer = %peer.short(), error = %e, "sync session failed")
@@ -323,12 +354,15 @@ impl PeerManager {
             Ok(mut link) => {
                 let addr = link.info().addr;
                 let result = sync::run_session(&mut link, &self.ctx, Role::Dialler).await;
-                link.close("done");
+                // Gracefully, because the dialler's last act is a send: see
+                // `PeerLink::close_gracefully`.
+                link.close_gracefully("done").await;
 
                 match result {
                     Ok(outcome) => {
                         info!(peer = %peer.short(), ?outcome, "synced");
                         self.note_success(peer, addr);
+                        self.settle(&outcome).await;
                         Ok(())
                     }
                     Err(e) => Err(e.to_string()),
@@ -336,11 +370,23 @@ impl PeerManager {
             }
             Err(error) => {
                 let message = error.to_string();
+                // Which addresses were tried, and what each said. Without this
+                // an unreachable peer is a one-line summary, and the answer to
+                // "why" — a stale port, a link-local address that cannot be
+                // dialled — is not in the log at all.
+                let tried = match &error {
+                    clipse_net::DialError::Unreachable { attempts } => attempts
+                        .iter()
+                        .map(|a| format!("{} ({})", a.addr, a.reason))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    _ => String::new(),
+                };
                 let mut peers = self.peers.lock().expect(POISONED);
                 if let Some(state) = peers.get_mut(&peer) {
                     if error.is_retryable() {
                         let delay = state.backoff.next_delay_ms();
-                        debug!(peer = %peer.short(), delay_ms = delay, "peer unreachable");
+                        debug!(peer = %peer.short(), delay_ms = delay, %tried, "peer unreachable");
                     } else {
                         // Surfaced rather than retried: this is a removed
                         // device or something that needs attention.
@@ -455,6 +501,7 @@ mod tests {
             loop_guard: Arc::new(Mutex::new(LoopGuard::default())),
             label: "test".into(),
             platform: "test".into(),
+            events: None,
         });
 
         // The temp dir must outlive the store; leaked deliberately, this is a

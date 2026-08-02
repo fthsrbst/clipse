@@ -100,6 +100,11 @@ impl PairingExchange {
 /// Short: the whole point of the ordered list is to fail over quickly.
 const DIAL_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// How long the side that speaks last waits for the other to hang up before
+/// closing anyway. Generous enough for a LAN round trip and a slow store
+/// write, short enough that one wedged peer cannot stall the dial loop.
+const CLOSE_GRACE: Duration = Duration::from_secs(2);
+
 /// Ceiling on one wire frame. A frame is one Noise message, which the protocol
 /// caps at 65535 anyway; this refuses a bad length prefix before allocating.
 const MAX_FRAME_BYTES: u32 = 65_535;
@@ -495,7 +500,27 @@ impl PeerLink {
         Ok(out)
     }
 
+    /// Hang up immediately. Correct for the side whose last act was a *read*:
+    /// it has nothing outstanding, and the peer is waiting for exactly this.
     pub fn close(self, reason: &str) {
+        self.connection.close(0u32.into(), reason.as_bytes());
+    }
+
+    /// Hang up, but let what was just written actually arrive first.
+    ///
+    /// `Connection::close` is immediate and discards stream data the peer has
+    /// not acknowledged yet. The side that *ends on a send* — the dialler,
+    /// whose last act is the closing `Ack` — therefore destroys that `Ack` in
+    /// flight by hanging up on the very next line, and the peer reports a
+    /// session that in fact moved every clip as a failure. Every inbound
+    /// session between two real machines failed this way.
+    ///
+    /// So: finish the stream, and wait for the peer to hang up first — it does
+    /// that as soon as it has read the last message. The timeout is what keeps
+    /// a peer that never closes from holding the dial loop.
+    pub async fn close_gracefully(mut self, reason: &str) {
+        let _ = self.send.finish();
+        let _ = tokio::time::timeout(CLOSE_GRACE, self.connection.closed()).await;
         self.connection.close(0u32.into(), reason.as_bytes());
     }
 }

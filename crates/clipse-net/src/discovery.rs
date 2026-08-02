@@ -172,10 +172,11 @@ impl Discovery {
             .addresses
             .iter()
             .map(|scoped| SocketAddr::new(scoped.to_ip_addr(), port))
+            .filter(dialable)
             .collect();
 
         if addresses.is_empty() {
-            debug!(instance, "advertisement resolved with no addresses");
+            debug!(instance, "advertisement resolved with no usable address");
             return None;
         }
 
@@ -189,6 +190,22 @@ impl Discovery {
             fingerprint: record.fingerprint,
             addresses,
         })))
+    }
+}
+
+/// Whether an advertised address is worth putting in front of the dialler.
+///
+/// A link-local IPv6 address is meaningless without the interface it belongs
+/// to, and the scope is exactly what is lost on the way out of `to_ip_addr`.
+/// Passing one on produces "invalid remote address" every single time — and,
+/// worse, it takes up a slot in a peer's candidate list that a working address
+/// could have had. A Windows box advertising four of them is enough to hide
+/// its own IPv4 address completely.
+fn dialable(addr: &SocketAddr) -> bool {
+    match addr.ip() {
+        std::net::IpAddr::V4(_) => true,
+        // fe80::/10, without the scope that would make it routable.
+        std::net::IpAddr::V6(v6) => (v6.segments()[0] & 0xffc0) != 0xfe80,
     }
 }
 
@@ -253,5 +270,26 @@ mod tests {
                 eprintln!("mDNS unavailable in this environment: {e}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod address_tests {
+    use super::*;
+
+    /// A Windows peer advertising four link-local addresses and one usable
+    /// one: passing the four on is what buried the fifth.
+    #[test]
+    fn link_local_ipv6_is_not_offered_as_a_candidate() {
+        let usable: SocketAddr = "192.168.1.9:65026".parse().unwrap();
+        let link_local: SocketAddr = "[fe80::3da6:294b:d805:a07]:65026".parse().unwrap();
+        let unique_local: SocketAddr = "[fdb0:b3aa::1]:65026".parse().unwrap();
+
+        assert!(dialable(&usable));
+        assert!(!dialable(&link_local), "no scope, no route");
+        assert!(
+            dialable(&unique_local),
+            "a routable v6 address is a real candidate"
+        );
     }
 }

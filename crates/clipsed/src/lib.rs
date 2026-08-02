@@ -176,6 +176,7 @@ pub async fn run(
                     loop_guard,
                     label: device_label,
                     platform: std::env::consts::OS.to_string(),
+                    events: Some(events.clone()),
                 });
                 let record = clipse_net::ServiceRecord::new(
                     config_device,
@@ -204,7 +205,9 @@ pub async fn run(
                         "network announcement is off; peers are reached at their paired addresses"
                     );
                 }
-                let manager = manager.with_pairing(Arc::clone(&pairing_state), events);
+                let manager = manager
+                    .with_pairing(Arc::clone(&pairing_state), events)
+                    .with_daemon(Arc::downgrade(&daemon));
                 daemon.set_peers(Arc::clone(&manager));
 
                 let addresses = reachable_addresses(quic_port);

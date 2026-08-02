@@ -123,6 +123,31 @@ impl Daemon {
         }
     }
 
+    /// Put a clip that arrived from another device onto this device's
+    /// clipboard, if the user asked for that.
+    ///
+    /// This is what `apply_incoming_to_clipboard` means: copy on one machine,
+    /// paste on the next without opening anything. Called once per session
+    /// with the newest clip taken in — not once per clip, or catching up after
+    /// a day offline would replay a whole history through the clipboard.
+    ///
+    /// Paused means "stop touching this machine's clipboard", so it holds here
+    /// too, in both directions.
+    pub async fn apply_incoming(&self, id: ClipId) {
+        {
+            let state = self.state.lock().expect(POISONED);
+            if state.paused || !state.config.settings.apply_incoming_to_clipboard {
+                return;
+            }
+        }
+
+        // The loop guard was told about this clip before we got here, so the
+        // watcher seeing our own write does not send it straight back.
+        if let Response::Error(e) = self.apply(id).await {
+            warn!(error = %e, "an incoming clip could not be put on the clipboard");
+        }
+    }
+
     pub fn store(&self) -> Arc<Store> {
         Arc::clone(&self.store)
     }

@@ -22,6 +22,11 @@ pub enum Reachability {
     Tailnet,
 }
 
+/// How many LAN addresses to keep for one peer. A machine has a handful of
+/// interfaces; anything past this is history, and history is what `dial_order`
+/// puts last anyway.
+const MAX_LAN_CANDIDATES: usize = 6;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Candidate {
     pub addr: SocketAddr,
@@ -100,15 +105,61 @@ impl CandidateList {
         }
     }
 
-    /// Replace the LAN entries with what discovery just reported, keeping the
-    /// tailnet ones. A peer that left the network should stop being tried on
-    /// its old LAN address, but must not lose its way home.
+    /// Fold what discovery just reported into the LAN entries.
+    ///
+    /// Additive, deliberately. This used to replace the LAN set outright, and
+    /// that lost a real deployment: one browse resolved the peer with only
+    /// link-local addresses it could not be dialled on, those four replaced
+    /// the address that had been working, no later browse re-reported it, and
+    /// the peer stayed unreachable until it was paired again.
+    ///
+    /// An address that has gone stale does not need deleting — [`dial_order`]
+    /// sorts by when each was last seen, so it sinks to the bottom on its own,
+    /// and being last costs one refused connect. Being *deleted* costs the
+    /// whole peer. The cap is what stops a peer that restarts on a new
+    /// ephemeral port every day from growing this list without end.
+    ///
+    /// [`dial_order`]: Self::dial_order
     pub fn refresh_lan(&mut self, discovered: impl IntoIterator<Item = SocketAddr>, now_ms: u64) {
-        self.candidates
-            .retain(|c| c.reachability != Reachability::Lan);
         for addr in discovered {
             self.upsert(Candidate::lan(addr).seen_at(now_ms));
         }
+        self.prune_lan();
+    }
+
+    /// Keep the most recently seen LAN addresses and drop the rest.
+    fn prune_lan(&mut self) {
+        let lan = self
+            .candidates
+            .iter()
+            .filter(|c| c.reachability == Reachability::Lan)
+            .count();
+        if lan <= MAX_LAN_CANDIDATES {
+            return;
+        }
+
+        let mut by_age: Vec<(usize, Option<u64>)> = self
+            .candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.reachability == Reachability::Lan)
+            .map(|(index, c)| (index, c.last_seen_ms))
+            .collect();
+        // Never-seen last, so an address recorded at pairing time is the first
+        // to go once real sightings have replaced it.
+        by_age.sort_by_key(|(_, seen)| std::cmp::Reverse(*seen));
+
+        let doomed: Vec<usize> = by_age
+            .into_iter()
+            .skip(MAX_LAN_CANDIDATES)
+            .map(|(i, _)| i)
+            .collect();
+        let mut index = 0;
+        self.candidates.retain(|_| {
+            let keep = !doomed.contains(&index);
+            index += 1;
+            keep
+        });
     }
 
     pub fn set_tailnet(&mut self, addr: Option<SocketAddr>, now_ms: u64) {
@@ -214,19 +265,66 @@ mod tests {
         // The peer left the network: discovery reports nothing.
         list.refresh_lan([], 2_000);
 
-        assert_eq!(list.len(), 1, "the stale LAN address must go");
-        assert_eq!(list.dial_order()[0].reachability, Reachability::Tailnet);
+        assert!(
+            list.dial_order()
+                .iter()
+                .any(|c| c.reachability == Reachability::Tailnet),
+            "the tailnet route must survive a browse that found nothing"
+        );
     }
 
     #[test]
-    fn refreshing_the_lan_replaces_rather_than_accumulates() {
+    fn a_new_lease_is_tried_before_the_old_one() {
         let mut list = CandidateList::new([Candidate::lan(lan(10, 7420)).seen_at(1_000)]);
 
         // Same peer, new DHCP lease.
         list.refresh_lan([lan(55, 7420)], 2_000);
 
-        assert_eq!(list.len(), 1);
         assert_eq!(list.dial_order()[0].addr, lan(55, 7420));
+    }
+
+    /// The deployment failure this list exists to survive: a browse resolves
+    /// the peer with addresses that cannot be dialled, and the one that works
+    /// must still be there afterwards.
+    #[test]
+    fn a_browse_that_reports_nothing_usable_does_not_evict_the_working_address() {
+        let working = lan(9, 58_091);
+        let mut list = CandidateList::new([Candidate::lan(working).seen_at(1_000)]);
+
+        // Four sightings on a different interface, none of them reachable.
+        list.refresh_lan(
+            [
+                lan(200, 65_026),
+                lan(201, 65_026),
+                lan(202, 65_026),
+                lan(203, 65_026),
+            ],
+            2_000,
+        );
+
+        assert!(
+            list.dial_order().iter().any(|c| c.addr == working),
+            "the address that has been working was thrown away"
+        );
+    }
+
+    #[test]
+    fn a_peer_that_keeps_restarting_does_not_grow_the_list_forever() {
+        let mut list = CandidateList::new([Candidate::lan(lan(9, 1)).seen_at(1)]);
+        for port in 2..40u16 {
+            list.refresh_lan([lan(9, port)], u64::from(port) * 1_000);
+        }
+
+        assert!(
+            list.len() <= MAX_LAN_CANDIDATES,
+            "candidate list grew to {}",
+            list.len()
+        );
+        assert_eq!(
+            list.dial_order()[0].addr,
+            lan(9, 39),
+            "the newest sighting must still be tried first"
+        );
     }
 
     #[test]

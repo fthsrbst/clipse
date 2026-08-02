@@ -446,3 +446,51 @@ async fn two_strangers_pair_over_the_wire_and_can_then_sync() {
     link.close("done");
     let _ = server.await;
 }
+
+/// The bug that made every inbound session between two real machines look
+/// broken: the side that speaks last hung up on the very next line, and QUIC
+/// threw away the message it had just written.
+///
+/// The peer here does what a responder does — finishes its own work before
+/// reading the last message — which is exactly the window the abrupt close
+/// used to land in.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_last_message_survives_the_sender_hanging_up() {
+    let alice = Device::new();
+    let bob = Device::new();
+    alice.trusts(&bob, "bob");
+    bob.trusts(&alice, "alice");
+
+    let alice_transport = Arc::new(alice.transport());
+    let bob_transport = Arc::new(bob.transport());
+    let bob_addr = bob_transport.local_addr();
+
+    let server = tokio::spawn({
+        let bob_transport = Arc::clone(&bob_transport);
+        async move {
+            let mut link = bob_transport.accept_session().await.unwrap().unwrap();
+            // Busy for a moment — writing to a store, say — and only then
+            // reading what the dialler left for it.
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            link.recv().await
+        }
+    });
+
+    let mut link = alice_transport
+        .dial(bob.id(), &candidates(bob_addr))
+        .await
+        .expect("dial");
+
+    let last = SyncMessage::Ack {
+        hlc: Hlc::new(42, 0, alice.id()),
+    };
+    link.send(&last).await.unwrap();
+    link.close_gracefully("done").await;
+
+    let received = server.await.unwrap();
+    assert_eq!(
+        received.expect("the closing Ack never arrived"),
+        last,
+        "the peer would have reported a completed session as a failure"
+    );
+}
